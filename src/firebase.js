@@ -2,12 +2,12 @@ import { initializeApp } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBvNxyUM0JzMrmMJ-x3ALTnIY_7EmqcqdQ",
-  authDomain: "app-flussi.firebaseapp.com",
-  projectId: "app-flussi",
-  storageBucket: "app-flussi.firebasestorage.app",
-  messagingSenderId: "274966515849",
-  appId: "1:274966515849:web:f5760f523d14f3be427658"
+  apiKey: "AIzaSyDIFNWEujjCgIVqVdmCpODViALYem3T2kk",
+  authDomain: "biolife-iovenitti.firebaseapp.com",
+  projectId: "biolife-iovenitti",
+  storageBucket: "biolife-iovenitti.firebasestorage.app",
+  messagingSenderId: "874668863927",
+  appId: "1:874668863927:web:717242e68287b6dd297832"
 }
 
 const app = initializeApp(firebaseConfig)

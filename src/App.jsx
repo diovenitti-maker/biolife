@@ -5,6 +5,7 @@ import { defaultAlimentazione, GIORNI, PASTI } from './data/alimentazione.js'
 import { defaultStileVita } from './data/stileVita.js'
 import { profiliGenetici } from './data/profiliGenetici.js'
 import { integratoriDamiano } from './data/integratori.js'
+import { defaultAllenamenti, TIPI_ALLENAMENTO, GIORNI_SETTIMANA } from './data/allenamenti.js'
 
 const PROFILI = [
   { id: 'damiano', nome: 'Damiano', eta: 37, emoji: '👨', colore: '#7c6af7', coloreDark: '#5a48d4' },
@@ -13,7 +14,7 @@ const PROFILI = [
   { id: 'tommaso', nome: 'Tommaso', eta: 4,  emoji: '👶', colore: '#ffa94d', coloreDark: '#d4812a' },
 ]
 
-const TABS = ['🥗 Alimentazione', '🧬 Profilo Genetico', '🌿 Stile di Vita', '💊 Integratori']
+const TABS = ['🥗 Alimentazione', '🧬 Profilo Genetico', '🏃 Allenamento', '🌿 Stile di Vita', '💊 Integratori']
 
 const css = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -247,6 +248,7 @@ function MealPlan({ profilo, profiloColore }) {
 // ──────────────────────────── COMPONENTE PROFILO GENETICO ────────────────────
 function ProfiloGenetico({ profilo, profiloColore }) {
   const dati = profiliGenetici[profilo]
+  const [patoAperta, setPatoAperta] = useState(null)
   if (!dati) return null
 
   const getLivelloBadge = (livello) => {
@@ -267,6 +269,36 @@ function ProfiloGenetico({ profilo, profiloColore }) {
 
   return (
     <div>
+      {dati.patologie?.length > 0 && (
+        <>
+          <div className="section-title">🏥 Patologie & Condizioni Accertate</div>
+          <div className="mb-16">
+            {dati.patologie.map((p, i) => (
+              <div key={i} style={{ background: 'var(--card)', border: `1px solid ${p.livello === 'alto' ? 'rgba(248,113,113,0.3)' : 'rgba(251,191,36,0.25)'}`, borderRadius: 'var(--radius)', marginBottom: 10, overflow: 'hidden' }}>
+                <div className="flex items-center justify-between" style={{ padding: '12px 14px', cursor: 'pointer' }} onClick={() => setPatoAperta(patoAperta === i ? null : i)}>
+                  <div className="flex items-center gap-8">
+                    <span style={{ fontSize: 20 }}>{p.emoji}</span>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>{p.nome}</span>
+                  </div>
+                  <div className="flex items-center gap-8">
+                    <span className={`badge ${p.livello === 'alto' ? 'badge-red' : 'badge-yellow'}`}>{p.livello === 'alto' ? '🔴 Attenzione' : '🟡 Monitorare'}</span>
+                    <span style={{ color: 'var(--muted)', fontSize: 12 }}>{patoAperta === i ? '▲' : '▼'}</span>
+                  </div>
+                </div>
+                {patoAperta === i && (
+                  <div style={{ padding: '0 14px 14px', borderTop: '1px solid var(--border)' }}>
+                    <div className="text-sm text-muted" style={{ marginTop: 10, marginBottom: 10 }}>{p.note}</div>
+                    <div className="label mb-8">Consigli pratici</div>
+                    {p.consigli.map((c, j) => (
+                      <div key={j} className="note-item" style={{ marginBottom: 6 }}>{c}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       {dati.rischiPRS.length > 0 && (
         <>
           <div className="section-title">🧬 Rischi Genetici (PRS Score)</div>
@@ -473,6 +505,205 @@ function StileVita() {
   )
 }
 
+// ──────────────────────────── COMPONENTE ALLENAMENTO ────────────────────────
+function Allenamento({ profilo, profiloColore }) {
+  const [dati, setDati] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editForm, setEditForm] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [giornoFiltro, setGiornoFiltro] = useState('Tutti')
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const ref = doc(db, 'biolife_allenamenti', profilo)
+        const snap = await getDoc(ref)
+        if (snap.exists()) {
+          setDati(snap.data())
+        } else {
+          const def = defaultAllenamenti[profilo] || { note: '', sessioni: [] }
+          setDati(def)
+          await setDoc(ref, def)
+        }
+      } catch {
+        setDati(defaultAllenamenti[profilo] || { note: '', sessioni: [] })
+      }
+    }
+    load()
+  }, [profilo])
+
+  const startEdit = (sessione) => {
+    setEditingId(sessione.id)
+    setEditForm({ ...sessione })
+  }
+
+  const saveEdit = async () => {
+    setSaving(true)
+    const nuoveSessioni = dati.sessioni.map(s => s.id === editingId ? { ...editForm } : s)
+    const nuovi = { ...dati, sessioni: nuoveSessioni }
+    setDati(nuovi)
+    setEditingId(null)
+    try {
+      await setDoc(doc(db, 'biolife_allenamenti', profilo), nuovi)
+    } catch (e) { console.error(e) }
+    setSaving(false)
+  }
+
+  const saveNote = async (nuovaNota) => {
+    const nuovi = { ...dati, note: nuovaNota }
+    setDati(nuovi)
+    try {
+      await setDoc(doc(db, 'biolife_allenamenti', profilo), nuovi)
+    } catch (e) { console.error(e) }
+  }
+
+  const [editingNote, setEditingNote] = useState(false)
+  const [noteValue, setNoteValue] = useState('')
+
+  const getIntensitaColore = (intensita) => {
+    if (intensita === 'alta') return '#f87171'
+    if (intensita === 'media') return '#fbbf24'
+    return '#4ade80'
+  }
+
+  const getTipoEmoji = (tipo) => {
+    const map = { 'Arti Marziali': '🥋', 'Corsa': '🏃', 'Cardio': '🚴', 'Corpo libero': '💪', 'Nuoto': '🏊', 'Atletica': '⚡', 'Outdoor': '🚵', 'Allungamento': '🧘', 'Yoga': '🧘', 'Recupero': '😴', 'Gioco libero': '🎮', 'Altro': '🏋️' }
+    return map[tipo] || '🏋️'
+  }
+
+  if (!dati) return <div className="text-muted">Caricamento…</div>
+
+  const sessioni = giornoFiltro === 'Tutti' ? dati.sessioni : dati.sessioni.filter(s => s.giorno === giornoFiltro)
+  const giornoShort = { 'Lunedì':'Lun','Martedì':'Mar','Mercoledì':'Mer','Giovedì':'Gio','Venerdì':'Ven','Sabato':'Sab','Domenica':'Dom' }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="section-title" style={{ marginBottom: 0 }}>Piano Allenamento</div>
+        {saving && <span className="text-xs text-muted">Salvataggio…</span>}
+      </div>
+
+      {/* Note generali */}
+      <div className="card mb-16">
+        <div className="flex items-center justify-between mb-4">
+          <span className="label">Note generali</span>
+          {editingNote ? (
+            <div className="flex gap-4">
+              <button className="cancel-btn" onClick={() => setEditingNote(false)}>Annulla</button>
+              <button className="save-btn" onClick={() => { saveNote(noteValue); setEditingNote(false) }}>Salva</button>
+            </div>
+          ) : (
+            <button className="edit-btn" onClick={() => { setEditingNote(true); setNoteValue(dati.note || '') }}>✏️ Modifica</button>
+          )}
+        </div>
+        {editingNote ? (
+          <textarea value={noteValue} onChange={e => setNoteValue(e.target.value)} style={{ minHeight: 60 }} />
+        ) : (
+          <div className="text-sm">{dati.note || '—'}</div>
+        )}
+      </div>
+
+      {/* Filtro giorni */}
+      <div className="day-tabs mb-16">
+        <button className={`day-tab ${giornoFiltro === 'Tutti' ? 'active' : ''}`}
+          style={giornoFiltro === 'Tutti' ? { background: profiloColore, borderColor: profiloColore } : {}}
+          onClick={() => setGiornoFiltro('Tutti')}>Tutti</button>
+        {GIORNI_SETTIMANA.map(g => (
+          <button key={g} className={`day-tab ${giornoFiltro === g ? 'active' : ''}`}
+            style={giornoFiltro === g ? { background: profiloColore, borderColor: profiloColore } : {}}
+            onClick={() => setGiornoFiltro(g)}>{giornoShort[g]}</button>
+        ))}
+      </div>
+
+      {/* Sessioni */}
+      {sessioni.length === 0 && (
+        <div className="empty-state">Nessun allenamento per questo giorno</div>
+      )}
+
+      {sessioni.map(sessione => (
+        <div key={sessione.id} className="card mb-8" style={{ borderLeft: `3px solid ${getIntensitaColore(sessione.intensita)}` }}>
+          {editingId === sessione.id ? (
+            <div className="flex-col gap-8">
+              <div className="flex gap-8 mb-8" style={{ flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <div className="label mb-4">Giorno</div>
+                  <select value={editForm.giorno} onChange={e => setEditForm(f => ({ ...f, giorno: e.target.value }))}
+                    style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border2)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontSize: 14 }}>
+                    {GIORNI_SETTIMANA.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <div className="label mb-4">Tipo</div>
+                  <select value={editForm.tipo} onChange={e => setEditForm(f => ({ ...f, tipo: e.target.value }))}
+                    style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border2)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontSize: 14 }}>
+                    {TIPI_ALLENAMENTO.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <div className="label mb-4">Intensità</div>
+                  <select value={editForm.intensita} onChange={e => setEditForm(f => ({ ...f, intensita: e.target.value }))}
+                    style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border2)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontSize: 14 }}>
+                    <option value="bassa">🟢 Bassa</option>
+                    <option value="media">🟡 Media</option>
+                    <option value="alta">🔴 Alta</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-8 mb-8" style={{ flexWrap: 'wrap' }}>
+                <div style={{ flex: 2, minWidth: 160 }}>
+                  <div className="label mb-4">Disciplina</div>
+                  <input type="text" value={editForm.disciplina} onChange={e => setEditForm(f => ({ ...f, disciplina: e.target.value }))} />
+                </div>
+                <div style={{ flex: 1, minWidth: 100 }}>
+                  <div className="label mb-4">Orario</div>
+                  <input type="text" value={editForm.orario} onChange={e => setEditForm(f => ({ ...f, orario: e.target.value }))} />
+                </div>
+                <div style={{ flex: 1, minWidth: 100 }}>
+                  <div className="label mb-4">Durata</div>
+                  <input type="text" value={editForm.durata} onChange={e => setEditForm(f => ({ ...f, durata: e.target.value }))} />
+                </div>
+              </div>
+              <div className="mb-8">
+                <div className="label mb-4">Note</div>
+                <textarea value={editForm.note} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))} style={{ minHeight: 50 }} />
+              </div>
+              <div className="flex gap-4">
+                <button className="cancel-btn" onClick={() => setEditingId(null)}>Annulla</button>
+                <button className="save-btn" onClick={saveEdit}>Salva</button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-8">
+                  <span style={{ fontSize: 20 }}>{getTipoEmoji(sessione.tipo)}</span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{sessione.disciplina}</div>
+                    <div className="text-xs text-muted">{sessione.giorno} · {sessione.tipo}</div>
+                  </div>
+                </div>
+                <button className="edit-btn" onClick={() => startEdit(sessione)}>✏️</button>
+              </div>
+              <div className="flex gap-8" style={{ flexWrap: 'wrap', marginBottom: sessione.note ? 8 : 0 }}>
+                {sessione.orario && sessione.orario !== '—' && (
+                  <div className="chip">🕐 {sessione.orario}</div>
+                )}
+                {sessione.durata && sessione.durata !== '—' && (
+                  <div className="chip">⏱ {sessione.durata}</div>
+                )}
+                <div className="chip" style={{ color: getIntensitaColore(sessione.intensita), borderColor: getIntensitaColore(sessione.intensita) + '44' }}>
+                  ● {sessione.intensita}
+                </div>
+              </div>
+              {sessione.note && <div className="text-xs text-muted mt-8">{sessione.note}</div>}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ──────────────────────────── COMPONENTE INTEGRATORI ─────────────────────────
 function Integratori({ profilo }) {
   const dati = profiliGenetici[profilo]
@@ -585,9 +816,12 @@ export default function App() {
             <ProfiloGenetico profilo={profiloId} profiloColore={profilo?.colore} />
           )}
           {tabIdx === 2 && (
-            <StileVita />
+            <Allenamento profilo={profiloId} profiloColore={profilo?.colore} />
           )}
           {tabIdx === 3 && (
+            <StileVita />
+          )}
+          {tabIdx === 4 && (
             <Integratori profilo={profiloId} />
           )}
         </div>
