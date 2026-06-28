@@ -13,7 +13,7 @@ const PROFILI=[
   {id:'daniele',nome:'Daniele',eta:7, emoji:'👦',colore:'#4ecdc4'},
   {id:'tommaso',nome:'Tommaso',eta:4, emoji:'👶',colore:'#ffa94d'},
 ]
-const TABS=['🥗 Alimentazione','🧬 Profilo Genetico','🏃 Allenamento','🌿 Stile di Vita','💊 Integratori']
+const TABS=['🥗 Alimentazione','🧬 Profilo Genetico','🏃 Allenamento','🌿 Stile di Vita','💊 Integratori','💧 Acqua']
 
 const getProteina=(testo)=>{
   if(!testo)return null
@@ -496,6 +496,163 @@ function Integratori({profilo}){
   )
 }
 
+
+// ─── ACQUA TRACKER ───────────────────────────────────────────────────────────
+const GOAL_ACQUA={damiano:8,ilaria:8,daniele:6,tommaso:5}
+const ML_PER_BICCHIERE=250
+
+function AcquaTracker({profilo,profiloColore}){
+  const oggi=new Date()
+  const[dataOffset,setDataOffset]=useState(0)
+  const[bicchieri,setBicchieri]=useState(0)
+  const[saving,setSaving]=useState(false)
+  const[loaded,setLoaded]=useState(false)
+
+  const getDataStr=(offset=0)=>{
+    const d=new Date(oggi);d.setDate(d.getDate()+offset)
+    return d.toISOString().split('T')[0]
+  }
+  const dataStr=getDataStr(dataOffset)
+  const dataLabel=(offset)=>{
+    if(offset===0)return'Oggi'
+    if(offset===-1)return'Ieri'
+    if(offset===1)return'Domani'
+    const d=new Date(oggi);d.setDate(d.getDate()+offset)
+    return d.toLocaleDateString('it-IT',{day:'numeric',month:'short'})
+  }
+
+  const fbKey=`${profilo}_${dataStr}`
+
+  useEffect(()=>{
+    setLoaded(false);setBicchieri(0)
+    const load=async()=>{
+      try{
+        const ref=doc(db,'biolife_acqua',fbKey)
+        const snap=await getDoc(ref)
+        if(snap.exists())setBicchieri(snap.data().bicchieri||0)
+        else setBicchieri(0)
+      }catch{setBicchieri(0)}
+      setLoaded(true)
+    };load()
+  },[profilo,fbKey])
+
+  const goal=GOAL_ACQUA[profilo]||8
+  const mlTotali=bicchieri*ML_PER_BICCHIERE
+  const mlGoal=goal*ML_PER_BICCHIERE
+  const pct=Math.min(bicchieri/goal,1)
+
+  const toggleBicchiere=async(idx)=>{
+    const nuovi=idx<bicchieri?idx:idx+1
+    setBicchieri(nuovi);setSaving(true)
+    try{await setDoc(doc(db,'biolife_acqua',fbKey),{bicchieri:nuovi,data:dataStr,profilo})}catch(e){console.error(e)}
+    setSaving(false)
+  }
+
+  const msg=()=>{
+    if(bicchieri===0)return'Inizia la tua idratazione! 💧'
+    if(bicchieri<goal*0.25)return'Ottimo inizio, continua!'
+    if(bicchieri<goal*0.5)return'Buon ritmo, vai avanti! 🌊'
+    if(bicchieri<goal*0.75)return'Più della metà, bravissimo!'
+    if(bicchieri<goal)return`Quasi! Mancano solo ${goal-bicchieri} bicchieri 🎯`
+    return'Obiettivo raggiunto! 🏆 Ottima idratazione!'
+  }
+
+  return(
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="section-title" style={{marginBottom:0}}>💧 Tracker Acqua</div>
+        {saving&&<span className="text-xs text-muted">Salvataggio…</span>}
+      </div>
+
+      {/* Navigazione data */}
+      <div className="flex items-center justify-between mb-16" style={{background:'var(--card)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'10px 16px'}}>
+        <button onClick={()=>setDataOffset(o=>o-1)} style={{background:'transparent',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:18,padding:'0 8px'}}>‹</button>
+        <div style={{textAlign:'center'}}>
+          <div style={{fontFamily:'Space Grotesk',fontWeight:600,fontSize:15}}>{dataLabel(dataOffset)}</div>
+          <div style={{fontSize:11,color:'var(--muted)'}}>{dataStr}</div>
+        </div>
+        <button onClick={()=>setDataOffset(o=>Math.min(o+1,0))} style={{background:'transparent',border:'none',color:dataOffset>=0?'var(--border2)':'var(--muted)',cursor:dataOffset>=0?'default':'pointer',fontSize:18,padding:'0 8px'}} disabled={dataOffset>=0}>›</button>
+      </div>
+
+      {/* Bicchieri */}
+      {loaded&&(
+        <>
+          <div style={{display:'grid',gridTemplateColumns:`repeat(${Math.min(goal,4)},1fr)`,gap:12,marginBottom:20}}>
+            {Array.from({length:goal}).map((_,i)=>{
+              const pieno=i<bicchieri
+              return(
+                <div key={i} onClick={()=>toggleBicchiere(i)}
+                  style={{cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+                  {/* Bicchiere SVG */}
+                  <div style={{position:'relative',width:44,height:56}}>
+                    {/* Corpo bicchiere */}
+                    <div style={{
+                      position:'absolute',inset:0,
+                      border:`2px solid ${pieno?profiloColore:'var(--border2)'}`,
+                      borderRadius:'4px 4px 8px 8px',
+                      overflow:'hidden',
+                      transition:'border-color .3s',
+                      background:'var(--surface)'
+                    }}>
+                      {/* Acqua che riempie */}
+                      <div style={{
+                        position:'absolute',bottom:0,left:0,right:0,
+                        height:pieno?'100%':'0%',
+                        background:`linear-gradient(180deg,${profiloColore}99,${profiloColore}dd)`,
+                        transition:'height .4s cubic-bezier(.4,0,.2,1)',
+                        borderRadius:'0 0 6px 6px'
+                      }}/>
+                      {/* Ondine */}
+                      {pieno&&<div style={{
+                        position:'absolute',top:0,left:0,right:0,height:4,
+                        background:`${profiloColore}66`,
+                        borderRadius:'50% 50% 0 0'
+                      }}/>}
+                    </div>
+                    {/* Manico */}
+                    <div style={{
+                      position:'absolute',right:-8,top:'30%',
+                      width:8,height:'35%',
+                      border:`2px solid ${pieno?profiloColore:'var(--border2)'}`,
+                      borderLeft:'none',
+                      borderRadius:'0 4px 4px 0',
+                      transition:'border-color .3s'
+                    }}/>
+                  </div>
+                  <span style={{fontSize:10,color:pieno?profiloColore:'var(--muted)',fontWeight:pieno?600:400,transition:'color .3s'}}>
+                    {(i+1)*ML_PER_BICCHIERE}ml
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Progress e stats */}
+          <div className="card mb-12">
+            <div className="flex items-center justify-between mb-8">
+              <span style={{fontFamily:'Space Grotesk',fontSize:28,fontWeight:700,color:profiloColore}}>{(mlTotali/1000).toFixed(2)}L</span>
+              <span style={{fontSize:13,color:'var(--muted)'}}>di {mlGoal/1000}L · {bicchieri}/{goal} bicchieri</span>
+            </div>
+            {/* Barra progresso */}
+            <div style={{background:'var(--border)',borderRadius:6,height:8,overflow:'hidden',marginBottom:10}}>
+              <div style={{height:'100%',width:`${pct*100}%`,background:`linear-gradient(90deg,${profiloColore}aa,${profiloColore})`,borderRadius:6,transition:'width .4s ease'}}/>
+            </div>
+            <div style={{fontSize:13,color:bicchieri>=goal?profiloColore:'var(--muted)'}}>{msg()}</div>
+          </div>
+
+          {/* Reset */}
+          {bicchieri>0&&(
+            <button onClick={()=>toggleBicchiere(-1)} style={{background:'transparent',border:'1px solid var(--border)',borderRadius:8,color:'var(--muted)',cursor:'pointer',fontSize:12,padding:'6px 14px',width:'100%'}}>
+              🔄 Azzera giornata
+            </button>
+          )}
+        </>
+      )}
+      {!loaded&&<div className="text-muted text-sm">Caricamento…</div>}
+    </div>
+  )
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App(){
   const[profiloId,setProfiloId]=useState('damiano')
@@ -525,6 +682,7 @@ export default function App(){
         {tabIdx===2&&<Allenamento profilo={profiloId} profiloColore={profilo?.colore}/>}
         {tabIdx===3&&<StileVita profilo={profiloId}/>}
         {tabIdx===4&&<Integratori profilo={profiloId}/>}
+        {tabIdx===5&&<AcquaTracker profilo={profiloId} profiloColore={profilo?.colore}/>}
       </div>
     </div></>
   )
