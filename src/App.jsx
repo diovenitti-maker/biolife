@@ -498,7 +498,7 @@ function Integratori({profilo}){
 
 
 // ─── ACQUA TRACKER ───────────────────────────────────────────────────────────
-const GOAL_ACQUA={damiano:8,ilaria:8,daniele:6,tommaso:5}
+const GOAL_ACQUA={damiano:8,ilaria:8,daniele:8,tommaso:8}
 const ML_PER_BICCHIERE=250
 
 function AcquaTracker({profilo,profiloColore}){
