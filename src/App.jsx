@@ -455,6 +455,7 @@ function Integratori({profilo}){
   const saveEdit=async f=>{await persist(lista.map(i=>i.id===editingId?{...i,...f}:i));setEditingId(null)}
   const elimina=async id=>{if(!confirm('Eliminare?'))return;await persist(lista.filter(i=>i.id!==id))}
   const aggiungi=async f=>{if(!f.nome?.trim())return;await persist([...lista,{...f,id:'int_'+Date.now()}]);setAggiungendo(false)}
+  const move=async(id,dir)=>{const arr=[...lista];const i=arr.findIndex(x=>x.id===id);const j=i+dir;if(j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]];await persist(arr)}
 
   if(!lista)return<div className="text-muted">Caricamento…</div>
   const periodi=[...new Set(lista.map(i=>i.periodo).filter(Boolean))]
@@ -470,11 +471,17 @@ function Integratori({profilo}){
           {lista.filter(i=>i.periodo===periodo).map(item=>(
             <div key={item.id}>
               {editingId===item.id?<FormIntegratore initialForm={item} onSave={saveEdit} onCancel={()=>setEditingId(null)} lbl="Salva"/>
-              :<div className="integr-card" style={{borderLeftColor:item.colore}}>
-                <div className="flex items-center justify-between mb-4"><div style={{fontWeight:600,fontSize:14,flex:1,paddingRight:8}}>{item.nome}</div><div className="flex gap-4"><div className="chip">{item.timing}</div><button className="edit-btn" onClick={()=>setEditingId(item.id)}>✏️</button><button className="del-btn" onClick={()=>elimina(item.id)}>🗑</button></div></div>
-                <div className="text-xs text-muted mb-4"><span style={{color:item.colore}}>●</span> {item.dosaggio}</div>
-                <div className="text-sm" style={{marginBottom:item.note?6:0}}>{item.beneficio}</div>
-                {item.note&&<div className="text-xs" style={{color:'#fbbf24',marginTop:4}}>{item.note}</div>}
+              :<div className="integr-card" style={{borderLeftColor:item.colore,display:'flex',gap:8,alignItems:'flex-start'}}>
+                <div className="flex gap-4" style={{flexShrink:0,flexDirection:'column'}}>
+                  <button className="move-btn" onClick={()=>move(item.id,-1)} disabled={lista.indexOf(item)===0} style={{opacity:lista.indexOf(item)===0?.3:1}}>↑</button>
+                  <button className="move-btn" onClick={()=>move(item.id,1)} disabled={lista.indexOf(item)===lista.length-1} style={{opacity:lista.indexOf(item)===lista.length-1?.3:1}}>↓</button>
+                </div>
+                <div style={{flex:1}}>
+                  <div className="flex items-center justify-between mb-4"><div style={{fontWeight:600,fontSize:14,flex:1,paddingRight:8}}>{item.nome}</div><div className="flex gap-4"><div className="chip">{item.timing}</div><button className="edit-btn" onClick={()=>setEditingId(item.id)}>✏️</button><button className="del-btn" onClick={()=>elimina(item.id)}>🗑</button></div></div>
+                  <div className="text-xs text-muted mb-4"><span style={{color:item.colore}}>●</span> {item.dosaggio}</div>
+                  <div className="text-sm" style={{marginBottom:item.note?6:0}}>{item.beneficio}</div>
+                  {item.note&&<div className="text-xs" style={{color:'#fbbf24',marginTop:4}}>{item.note}</div>}
+                </div>
               </div>}
             </div>
           ))}
