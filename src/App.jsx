@@ -5,6 +5,7 @@ import { defaultAlimentazione, GIORNI, PASTI } from './data/alimentazione.js'
 import { defaultStileVita } from './data/stileVita.js'
 import { profiliGenetici } from './data/profiliGenetici.js'
 import { integratoriDamiano } from './data/integratori.js'
+import { integratoriIlaria } from './data/integratoriIlaria.js'
 import { defaultAllenamenti, TIPI_ALLENAMENTO, GIORNI_SETTIMANA } from './data/allenamenti.js'
 
 const PROFILI=[
@@ -448,10 +449,12 @@ function Integratori({profilo}){
   const[aggiungendo,setAggiungendo]=useState(false)
   const[saving,setSaving]=useState(false)
   const iv=()=>({id:'int_'+Date.now(),periodo:"Tutto l'anno",timing:'',nome:'',dosaggio:'',beneficio:'',note:'',colore:'#7c6af7'})
+  const defaultPerProfilo=()=>profilo==='damiano'?integratoriDamiano:profilo==='ilaria'?integratoriIlaria:[]
 
-  useEffect(()=>{(async()=>{try{const s=await getDoc(doc(db,'biolife_integratori',profilo));if(s.exists())setLista(s.data().items||[]);else{const d=profilo==='damiano'?integratoriDamiano:[];setLista(d);await setDoc(doc(db,'biolife_integratori',profilo),{items:d})}}catch{setLista(profilo==='damiano'?integratoriDamiano:[])}})()},[profilo])
+  useEffect(()=>{(async()=>{try{const s=await getDoc(doc(db,'biolife_integratori',profilo));if(s.exists())setLista(s.data().items||[]);else{const d=profilo==='damiano'?integratoriDamiano:profilo==='ilaria'?integratoriIlaria:[];setLista(d);await setDoc(doc(db,'biolife_integratori',profilo),{items:d})}}catch{setLista(profilo==='damiano'?integratoriDamiano:profilo==='ilaria'?integratoriIlaria:[])}})()},[profilo])
 
   const persist=async n=>{setSaving(true);setLista(n);try{await setDoc(doc(db,'biolife_integratori',profilo),{items:n})}catch(e){console.error(e)};setSaving(false)}
+  const resetDefault=async()=>{if(!confirm('Ripristinare gli integratori di default per questo profilo?'))return;const d=defaultPerProfilo();await persist(d)}
   const saveEdit=async f=>{await persist(lista.map(i=>i.id===editingId?{...i,...f}:i));setEditingId(null)}
   const elimina=async id=>{if(!confirm('Eliminare?'))return;await persist(lista.filter(i=>i.id!==id))}
   const aggiungi=async f=>{if(!f.nome?.trim())return;await persist([...lista,{...f,id:'int_'+Date.now()}]);setAggiungendo(false)}
@@ -462,7 +465,7 @@ function Integratori({profilo}){
 
   return(
     <div>
-      <div className="flex items-center justify-between mb-4"><div className="section-title" style={{marginBottom:0}}>💊 Integratori</div>{saving&&<span className="text-xs text-muted">Salv…</span>}</div>
+      <div className="flex items-center justify-between mb-4"><div className="section-title" style={{marginBottom:0}}>💊 Integratori</div><div className="flex gap-4">{saving&&<span className="text-xs text-muted">Salv…</span>}<button className="reset-btn" onClick={resetDefault} title="Ripristina integratori default">🔄</button></div></div>
       <div className="text-muted text-sm mb-16">Modificabile · Aggiornare con il medico</div>
       {lista.length===0&&!aggiungendo&&<div className="empty-state"><div style={{fontSize:40,marginBottom:12}}>💊</div><div className="text-muted text-sm">Nessun integratore</div></div>}
       {periodi.map(periodo=>(
