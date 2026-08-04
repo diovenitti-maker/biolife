@@ -1,504 +1,582 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { fbGet, fbSet } from "./firebase.js";
+import { useState, useEffect } from 'react'
+import { db } from './firebase.js'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { defaultAlimentazione, GIORNI, PASTI } from './data/alimentazione.js'
+import { defaultStileVita } from './data/stileVita.js'
+import { profiliGenetici } from './data/profiliGenetici.js'
+import { integratoriDamiano } from './data/integratori.js'
+import { integratoriIlaria } from './data/integratoriIlaria.js'
+import { defaultAllenamenti, TIPI_ALLENAMENTO, GIORNI_SETTIMANA } from './data/allenamenti.js'
 
-const C = {
-  bg:        "#0F1117",
-  surface:   "#181C26",
-  elevated:  "#1E2333",
-  surfaceHi: "#232840",
-  border:    "#2A2F42",
-  borderSoft:"#1E2235",
-  text:      "#F0F2FA",
-  textSoft:  "#8890B0",
-  textDim:   "#50567A",
-  green:     "#4ADE80",
-  greenDim:  "#0E2A1A",
-  pink:      "#F472B6",
-  pinkDim:   "#2A0E1D",
-  gold:      "#FBBF24",
-  goldDim:   "#2A1E04",
-};
+const PROFILI=[
+  {id:'damiano',nome:'Damiano',eta:37,emoji:'👨',colore:'#7c6af7'},
+  {id:'ilaria', nome:'Ilaria', eta:34,emoji:'👩',colore:'#ff6b9d'},
+  {id:'daniele',nome:'Daniele',eta:7, emoji:'👦',colore:'#4ecdc4'},
+  {id:'tommaso',nome:'Tommaso',eta:4, emoji:'👶',colore:'#ffa94d'},
+]
+const TABS=['🥗 Alimentazione','🧬 Profilo Genetico','🏃 Allenamento','🌿 Stile di Vita','💊 Integratori','💧 Acqua']
 
-function fmt(n) {
-  return (Number(n)||0).toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});
+const getProteina=(testo)=>{
+  if(!testo)return null
+  const t=testo.toLowerCase()
+  if(t.includes('digiuno')||t.includes('tisana'))return{label:'Digiuno',colore:'#555566'}
+  if(t.includes('scuola')||t.includes('mensa'))return{label:'Scuola',colore:'#6b7280'}
+  if(t.includes('pesce')||t.includes('sgombro')||t.includes('platessa')||t.includes('salmone')||t.includes('tonno')||t.includes('merluzzo')||t.includes('branzino')||t.includes('orata')||t.includes('sardine')||t.includes('polpo')||t.includes('molluschi')||t.includes('trota')||t.includes('bastoncini')||t.includes('sogliola'))return{label:'Pesce',colore:'#60a5fa'}
+  if(t.includes('carne')||t.includes('pollo')||t.includes('manzo')||t.includes('selvaggina')||t.includes('tacchino')||t.includes('prosciutto')||t.includes('ragù')||t.includes('polpett')||t.includes('agnello'))return{label:'Carne',colore:'#f87171'}
+  if(t.includes('uov')||t.includes('frittata'))return{label:'Uova',colore:'#fbbf24'}
+  if(t.includes('legumi')||t.includes('lenticchie')||t.includes('fagioli')||t.includes('ceci')||t.includes('hummus')||t.includes('minestrone'))return{label:'Legumi',colore:'#a855f7'}
+  if(t.includes('kefir')||t.includes('ricotta')||t.includes('yogurt')||t.includes('mozzarella')||t.includes('formaggio'))return{label:'Latticini',colore:'#4ade80'}
+  return null
 }
-function uid() { return Math.random().toString(36).slice(2,9); }
+const TIPI_PROTEINA=[
+  {label:'Pesce',colore:'#60a5fa'},{label:'Carne',colore:'#f87171'},{label:'Uova',colore:'#fbbf24'},
+  {label:'Legumi',colore:'#a855f7'},{label:'Latticini',colore:'#4ade80'},{label:'Digiuno',colore:'#555566'},
+  {label:'Scuola',colore:'#6b7280'},{label:'—',colore:'#2e2e48'},
+]
+const getProtByLabel=l=>TIPI_PROTEINA.find(t=>t.label===l)||null
+const LEGENDA=TIPI_PROTEINA.slice(0,-1)
 
-// ── STRUTTURA CON ID FISSI ────────────────────────────────────────────────────
-// Gli ID sono fissi e hardcodati così i valori salvati nello storage
-// corrispondono sempre alle voci giuste, anche dopo un reload.
-const STRUCTURE = [
-  { id:"cat20", name:"Conto deposito 1,50%", subcats:[
-    { id:"s2001", name:"Altro", future:false, base:10 },
-  ]},
-  { id:"cat01", name:"Alimentari", subcats:[
-    { id:"s0101", name:"Alimentari", future:false, base:500 },
-  ]},
-  { id:"cat02", name:"Animali domestici", subcats:[
-    { id:"s0201", name:"Animali domestici", future:false, base:50 },
-  ]},
-  { id:"cat03", name:"Automobili", subcats:[
-    { id:"s0301", name:"Assicurazioni",    future:true,  base:155   },
-    { id:"s0302", name:"Bolli",            future:true,  base:50    },
-    { id:"s0303", name:"Carburante",       future:false, base:180   },
-    { id:"s0304", name:"Jeep club e FIF",  future:true,  base:6.25  },
-    { id:"s0305", name:"Manutenzione",     future:true,  base:38    },
-    { id:"s0306", name:"Parcheggio",       future:false, base:4     },
-    { id:"s0307", name:"Pedaggio",         future:false, base:8     },
-    { id:"s0308", name:"Revisioni",        future:true,  base:15    },
-    { id:"s0309", name:"Varie",            future:false, base:30    },
-  ]},
-  { id:"cat04", name:"Casa", subcats:[
-    { id:"s0401", name:"Assicurazione",      future:true,  base:73  },
-    { id:"s0402", name:"Bollette acqua",     future:true,  base:35  },
-    { id:"s0403", name:"Bollette corrente",  future:true,  base:90  },
-    { id:"s0404", name:"Telefoni + internet",future:false, base:57  },
-    { id:"s0405", name:"Giardinaggio",       future:false, base:15  },
-    { id:"s0406", name:"Immondizia",         future:true,  base:13  },
-    { id:"s0407", name:"Manutenzione",       future:false, base:15  },
-    { id:"s0408", name:"Mobili / Accessori", future:false, base:30  },
-    { id:"s0409", name:"Pulizia",            future:false, base:140 },
-    { id:"s0410", name:"Varie",              future:false, base:30  },
-  ]},
-  { id:"cat05", name:"Casa Pedica", subcats:[
-    { id:"s0501", name:"Casa Pedica", future:true, base:45 },
-  ]},
-  { id:"cat06", name:"Costi C/C", subcats:[
-    { id:"s0601", name:"Costi C/C", future:false, base:10 },
-  ]},
-  { id:"cat07", name:"Cura Pers. / Beness.", subcats:[
-    { id:"s0701", name:"Cura Pers. / Beness.", future:false, base:70 },
-  ]},
-  { id:"cat08", name:"Digitale e libri", subcats:[
-    { id:"s0801", name:"Applicazioni", future:true,  base:14.99 },
-    { id:"s0802", name:"Film",         future:false, base:5     },
-    { id:"s0803", name:"Libri",        future:false, base:10    },
-    { id:"s0804", name:"Varie",        future:false, base:5     },
-  ]},
-  { id:"cat09", name:"Divertimento", subcats:[
-    { id:"s0901", name:"Intrattenimento", future:false, base:35  },
-    { id:"s0902", name:"Sport e natura",  future:true,  base:180 },
-  ]},
-  { id:"cat10", name:"Figli", subcats:[
-    { id:"s1001", name:"Figli", future:false, base:900 },
-  ]},
-  { id:"cat11", name:"Fondi D. e T.", subcats:[
-    { id:"s1101", name:"Fondi anche Daniele e Tommaso", future:false, base:662.25 },
-  ]},
-  { id:"cat12", name:"Lavoro Damiano", subcats:[
-    { id:"s1201", name:"Accantonamento", future:true, base:600 },
-  ]},
-  { id:"cat13", name:"Lavoro Ilaria (fisiot.) ed EMI", subcats:[
-    { id:"s1301", name:"Accantonamento", future:true, base:600 },
-  ]},
-  { id:"cat14", name:"Lavoro Ilaria (viola)", subcats:[
-    { id:"s1401", name:"Accantonamento", future:false, base:0 },
-  ]},
-  { id:"cat15", name:"Mangiare fuori", subcats:[
-    { id:"s1501", name:"Mangiare fuori", future:false, base:80 },
-  ]},
-  { id:"cat16", name:"Regali", subcats:[
-    { id:"s1601", name:"Regali", future:false, base:20 },
-  ]},
-  { id:"cat17", name:"Salute", subcats:[
-    { id:"s1701", name:"Analisi e varie",  future:true,  base:50 },
-    { id:"s1702", name:"Dentista",         future:true,  base:20 },
-    { id:"s1703", name:"Dermatologo",      future:true,  base:15 },
-    { id:"s1704", name:"Farmacia",         future:false, base:15 },
-    { id:"s1705", name:"Ginecologa",       future:true,  base:7  },
-    { id:"s1706", name:"Medico sportivo",  future:true,  base:15 },
-    { id:"s1707", name:"Oculista",         future:true,  base:10 },
-  ]},
-  { id:"cat18", name:"Shopping", subcats:[
-    { id:"s1801", name:"Shopping", future:true, base:50 },
-  ]},
-  { id:"cat19", name:"Viaggi", subcats:[
-    { id:"s1901", name:"Viaggi", future:true, base:150 },
-  ]},
-];
+const css=`
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#07070f;--surface:#0f0f1a;--card:#151523;--card2:#1c1c2e;--border:#252538;--border2:#2e2e48;--text:#e8e8f4;--muted:#7878a0;--radius:14px;--radius-sm:8px}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:15px;line-height:1.6;min-height:100vh}
+  .app{max-width:900px;margin:0 auto;padding:0 0 80px}
+  .header{background:linear-gradient(135deg,#0f0f1a,#141428);border-bottom:1px solid var(--border);padding:20px 20px 0;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+  .logo{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;background:linear-gradient(135deg,#7c6af7,#4ecdc4);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .logo-sub{font-size:12px;color:var(--muted);-webkit-text-fill-color:var(--muted)}
+  .profiles-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none;margin-top:16px}
+  .profiles-row::-webkit-scrollbar,.day-tabs::-webkit-scrollbar,.tabs-row::-webkit-scrollbar{display:none}
+  .profile-btn{display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:40px;border:2px solid transparent;cursor:pointer;background:var(--card);color:var(--muted);font-size:13px;font-weight:500;white-space:nowrap;transition:all .2s}
+  .profile-btn.active{color:#fff;font-weight:600}
+  .tabs-row{display:flex;gap:2px;margin:0 -20px;overflow-x:auto;scrollbar-width:none}
+  .tab-btn{padding:10px 14px;font-size:13px;font-weight:500;background:transparent;border:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s}
+  .tab-btn.active{color:var(--text)}
+  .content{padding:20px}
+  .section-title{font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+  .card2{background:var(--card2);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px}
+  .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .badge-red{background:rgba(248,113,113,.15);color:#f87171}
+  .badge-yellow{background:rgba(251,191,36,.15);color:#fbbf24}
+  .badge-green{background:rgba(74,222,128,.15);color:#4ade80}
+  .label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+  .text-muted{color:var(--muted);font-size:13px}.text-sm{font-size:13px}.text-xs{font-size:11px}
+  .mb-4{margin-bottom:4px}.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}.mb-16{margin-bottom:16px}.mt-8{margin-top:8px}
+  .flex{display:flex}.gap-4{gap:4px}.gap-8{gap:8px}.items-center{align-items:center}.justify-between{justify-content:space-between}
+  .plan-toggle{display:flex;gap:4px;background:var(--surface);border-radius:10px;padding:4px;margin-bottom:20px;border:1px solid var(--border)}
+  .plan-toggle-btn{flex:1;padding:8px 12px;border-radius:7px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:var(--muted);transition:all .2s}
+  .plan-toggle-btn.active{background:var(--card);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.3)}
+  .day-tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin-bottom:16px}
+  .day-tab{padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .2s}
+  .day-tab.active{color:#fff;border-color:transparent;font-weight:600}
+  .meal-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+  .meal-header{padding:12px 14px;border-bottom:1px solid var(--border)}
+  .meal-body{padding:12px 14px}
+  .edit-btn{background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:11px;padding:3px 8px}
+  .save-btn{background:linear-gradient(135deg,#7c6af7,#4ecdc4);border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:12px;padding:6px 12px;font-weight:600}
+  .cancel-btn{background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;padding:6px 10px}
+  .del-btn{background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:6px;color:#f87171;cursor:pointer;font-size:11px;padding:3px 8px}
+  .reset-btn{background:transparent;border:1px solid rgba(251,191,36,.3);border-radius:6px;color:#fbbf24;cursor:pointer;font-size:11px;padding:3px 8px}
+  .move-btn{background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 7px;line-height:1}
+  .move-btn:hover{border-color:var(--border2);color:var(--text)}
+  textarea{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:14px;padding:10px 12px;resize:vertical;min-height:80px;outline:none}
+  textarea:focus{border-color:#7c6af7}
+  input[type="text"]{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:14px;padding:8px 12px;outline:none}
+  input[type="text"]:focus{border-color:#7c6af7}
+  select{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:14px;padding:8px 12px;outline:none}
+  .risk-bar{background:var(--border);border-radius:4px;height:6px;overflow:hidden;width:120px;flex-shrink:0}
+  .risk-fill{height:100%;border-radius:4px}
+  .note-item{display:flex;gap:8px;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface);margin-bottom:6px;border:1px solid var(--border);font-size:13px;align-items:flex-start}
+  .integr-card{background:var(--card);border-left:3px solid;border-radius:var(--radius);padding:14px;margin-bottom:10px}
+  .chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;background:var(--card2);color:var(--muted);border:1px solid var(--border)}
+  .list-item{display:flex;gap:8px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--card);margin-bottom:6px;border:1px solid var(--border);align-items:flex-start}
+  .routine-time{font-size:11px;font-weight:600;color:var(--muted);min-width:38px;margin-top:2px;font-family:'Space Grotesk',sans-serif}
+  .add-btn{width:100%;padding:11px;background:var(--card);border:2px dashed var(--border2);border-radius:var(--radius);color:var(--muted);cursor:pointer;font-size:13px;font-weight:500;transition:all .2s;margin-bottom:8px}
+  .add-btn:hover{border-color:#7c6af7;color:#7c6af7}
+  .form-box{background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+  .field-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+  hr.sep{border:none;border-top:1px solid var(--border);margin:20px 0}
+  .empty-state{text-align:center;padding:24px;color:var(--muted)}
+  .rg{display:grid;grid-template-columns:70px repeat(7,1fr);gap:3px}
+  .rg-h{font-size:10px;font-weight:600;color:var(--muted);text-align:center;padding:4px 2px}
+  .rg-l{font-size:10px;color:var(--muted);text-align:right;padding-right:6px;display:flex;align-items:center;justify-content:flex-end}
+  .rg-c{display:flex;align-items:center;justify-content:center;min-height:26px}
+  @media(max-width:600px){.content{padding:14px}.header{padding:14px 14px 0}.rg{grid-template-columns:55px repeat(7,1fr)}}
+`
 
-const INCOME_LIST = [
-  { id:"inc01", name:"Assegno Unico",               base:0       },
-  { id:"inc02", name:"GSE",                         base:0       },
-  { id:"inc03", name:"Bonus Nido",                  base:0       },
-  { id:"inc04", name:"Affitto Pedica",              base:1300    },
-  { id:"inc05", name:"Lavoro Ilaria fisioterapia",  base:1309.51 },
-  { id:"inc06", name:"Lavoro Ilaria viola",         base:0       },
-  { id:"inc07", name:"Lavoro Damiano",              base:3077    },
-  { id:"inc08", name:"Utili NEVE",                  base:0       },
-  { id:"inc09", name:"Utili IOVE",                  base:0       },
-  { id:"inc10", name:"Rimborsi assicurazione",      base:0       },
-  { id:"inc11", name:"Varie",                       base:0       },
-];
-
-// valori fissi iniziali (colonna verde)
-const INIT_FIXED = {};
-STRUCTURE.forEach(c => c.subcats.forEach(s => { if (s.base) INIT_FIXED[s.id] = s.base; }));
-
-// valori entrate iniziali
-const INIT_INCOME = {};
-INCOME_LIST.forEach(i => { if (i.base) INIT_INCOME[i.id] = i.base; });
-
-// ─── COMPONENTI ───────────────────────────────────────────────────────────────
-function InlineEdit({ value, onChange, style }) {
-  const ref = useRef(null);
-  const [editing, setEditing] = useState(false);
-
-  // aggiorna il contenuto solo quando non si sta editando
-  useEffect(() => {
-    if (!editing && ref.current && ref.current.textContent !== value) {
-      ref.current.textContent = value;
-    }
-  }, [value, editing]);
-
-  function handleFocus() {
-    setEditing(true);
-  }
-
-  function handleBlur() {
-    const newVal = ref.current?.textContent ?? "";
-    setEditing(false);
-    if (newVal !== value) onChange(newVal);
-  }
-
-  function handleKeyDown(e) {
-    if (e.key === "Enter") { e.preventDefault(); ref.current?.blur(); }
-  }
-
-  const baseColor = style?.color ?? C.text;
-
-  return (
-    <div
-      ref={ref}
-      contentEditable
-      suppressContentEditableWarning
-      onFocus={handleFocus}
-      onBlur={handleBlur}
-      onKeyDown={handleKeyDown}
-      style={{
-        minWidth: 40,
-        width: "100%",
-        outline: "none",
-        cursor: "text",
-        wordBreak: "break-word",
-        color: baseColor,
-        fontFamily: "inherit",
-        fontSize: "inherit",
-        fontWeight: "inherit",
-        padding: "2px 0",
-        ...style,
-        color: baseColor, // forza sempre il colore finale
-      }}
-    />
-  );
-}
-
-function AmountInput({ value, onChange, color, dimColor }) {
-  const toStr = v => (v != null && v !== 0) ? String(v).replace(".",",") : "";
-  const [local, setLocal] = useState(toStr(value));
-  useEffect(() => setLocal(toStr(value)), [value]);
-
-  function commit() {
-    const current = Number(value) || 0;
-    const raw = local.trim().replace(",",".");
-
-    let final = 0;
-    if (raw.startsWith("=")) {
-      // formula stile Excel: =100+30, =valore*2, ecc.
-      try {
-        final = Function('"use strict"; return (' + raw.slice(1) + ')')();
-        if (!isFinite(final)) final = current;
-      } catch { final = current; }
-    } else if (raw.startsWith("+") || raw.startsWith("-") || raw.startsWith("*") || raw.startsWith("/")) {
-      // formula relativa: +30, -50 (applica al valore corrente)
-      try {
-        final = Function('"use strict"; return (' + current + raw + ')')();
-        if (!isFinite(final)) final = current;
-      } catch { final = current; }
-    } else {
-      final = parseFloat(raw);
-      if (isNaN(final)) final = 0;
-    }
-
-    final = Math.round(final * 100) / 100;
-    setLocal(final === 0 ? "" : String(final).replace(".",","));
-    if (final !== current) onChange(final);
-  }
-
-  return (
-    <div style={{ display:"flex", alignItems:"center", background:dimColor, borderRadius:7, padding:"5px 10px", minWidth:108 }}>
-      <span style={{ color:C.textDim, fontSize:11, marginRight:3, fontFamily:"monospace" }}>€</span>
-      <input
-        value={local} placeholder="0,00" inputMode="text"
-        onChange={e => setLocal(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key==="Enter") e.target.blur(); }}
-        style={{
-          background:"transparent", border:"none",
-          color, WebkitTextFillColor:color,
-          fontFamily:"monospace", fontSize:13, fontWeight:600,
-          textAlign:"right", width:"100%", outline:"none",
-        }}
-      />
-    </div>
-  );
-}
-
-// ─── APP ──────────────────────────────────────────────────────────────────────
-export default function App() {
-  const [loaded,    setLoaded]    = useState(false);
-  const [structure, setStructure] = useState(STRUCTURE);
-  const [incList,   setIncList]   = useState(INCOME_LIST);
-  const [fixed,     setFixedData] = useState(INIT_FIXED);
-  const [variable,  setVarData]   = useState({});
-  const [incData,   setIncData]   = useState(INIT_INCOME);
-  const [carry,     setCarryVal]  = useState(0);
-  const [collapsed, setCollapsed] = useState({});
-  const [tab,       setTab]       = useState("uscite");
-  const [saving,    setSaving]    = useState(false);
-  const timer = useRef(null);
-
-  // ── carica dallo storage (sovrascrive i default solo se esistono dati salvati)
-  useEffect(() => {
-    async function load() {
-      const [s, il, f, v, id, c, col] = await Promise.all([
-        fbGet("structure"), fbGet("incList"), fbGet("fixed"),
-        fbGet("variable"), fbGet("incData"), fbGet("carry"), fbGet("collapsed"),
-      ]);
-      if (s)   setStructure(JSON.parse(s));
-      if (il)  setIncList(JSON.parse(il));
-      if (f)   setFixedData(JSON.parse(f));
-      if (v)   setVarData(JSON.parse(v));
-      if (id)  setIncData(JSON.parse(id));
-      if (c)   setCarryVal(Number(c) || 0);
-      if (col) setCollapsed(JSON.parse(col));
-      setLoaded(true);
-    }
-    load();
-  }, []);
-
-  function save(key, val) {
-    setSaving(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      await fbSet(key, typeof val==="string" ? val : JSON.stringify(val));
-      setSaving(false);
-    }, 350);
-  }
-
-  const pStruct = useCallback(n => { setStructure(n); save("structure",n); },[]);
-  const pInc    = useCallback(n => { setIncList(n);   save("incList",n);   },[]);
-  const upFixed = (id,v) => { const n={...fixed,[id]:v};    setFixedData(n); save("fixed",n); };
-  const upVar   = (id,v) => { const n={...variable,[id]:v}; setVarData(n);   save("variable",n);   };
-  const upInc   = (id,v) => { const n={...incData,[id]:v};  setIncData(n);   save("incData",n);   };
-  const upCarry = v      => { setCarryVal(v);                                  save("carry",String(v)); };
-  const toggleC = id     => { const n={...collapsed,[id]:!collapsed[id]}; setCollapsed(n); save("collapsed",n); };
-
-  // struttura ops
-  const renameCat    = (id,name) => pStruct(structure.map(c=>c.id===id?{...c,name}:c));
-  const deleteCat    = id        => pStruct(structure.filter(c=>c.id!==id));
-  const addCat       = ()        => pStruct([...structure,{id:uid(),name:"Nuova categoria",subcats:[{id:uid(),name:"Nuova voce",future:false,base:0}]}]);
-  const addSub       = cid       => pStruct(structure.map(c=>c.id===cid?{...c,subcats:[...c.subcats,{id:uid(),name:"Nuova voce",future:false,base:0}]}:c));
-  const renameSub    = (cid,sid,name) => pStruct(structure.map(c=>c.id===cid?{...c,subcats:c.subcats.map(s=>s.id===sid?{...s,name}:s)}:c));
-  const toggleFuture = (cid,sid) => pStruct(structure.map(c=>c.id===cid?{...c,subcats:c.subcats.map(s=>s.id===sid?{...s,future:!s.future}:s)}:c));
-  const deleteSub    = (cid,sid) => pStruct(structure.map(c=>c.id===cid?{...c,subcats:c.subcats.filter(s=>s.id!==sid)}:c));
-  const renameInc    = (id,name) => pInc(incList.map(i=>i.id===id?{...i,name}:i));
-  const deleteInc    = id        => pInc(incList.filter(i=>i.id!==id));
-  const addInc       = ()        => pInc([...incList,{id:uid(),name:"Nuova entrata",base:0}]);
-
-  // totali
-  let totFixed=0, totVar=0;
-  structure.forEach(c=>c.subcats.forEach(s=>{ totFixed+=Number(fixed[s.id])||0; totVar+=Number(variable[s.id])||0; }));
-  let totIncome=Number(carry)||0;
-  incList.forEach(i=>{ totIncome+=Number(incData[i.id])||0; });
-  const net = totIncome - totVar;
-
-  if (!loaded) return (
-    <div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.textSoft,fontFamily:"system-ui,sans-serif"}}>
-      Apertura delle buste…
-    </div>
-  );
-
-  return (
-    <div style={{background:C.bg,minHeight:"100vh",fontFamily:"system-ui,-apple-system,sans-serif",color:C.text}}>
-
-      {/* HEADER */}
-      <div style={{padding:"24px 24px 18px",borderBottom:`1px solid ${C.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:14}}>
-          <div>
-            <div style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:C.textDim,marginBottom:5}}>Budget familiare condiviso</div>
-            <h1 style={{margin:0,fontSize:24,fontWeight:300,color:C.text}}>Le <strong style={{color:C.green,fontWeight:700}}>buste</strong> di casa</h1>
-          </div>
-          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            {[
-              {label:"Entrate",    val:totIncome, color:C.green},
-              {label:"Uscite mese",val:totVar,    color:C.pink },
-              {label:"Saldo",      val:net,       color:net>=0?C.green:C.pink},
-            ].map(card=>(
-              <div key={card.label} style={{background:C.elevated,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 16px",minWidth:120}}>
-                <div style={{fontSize:10,color:C.textDim,textTransform:"uppercase",letterSpacing:"0.08em"}}>{card.label}</div>
-                <div style={{fontFamily:"monospace",fontSize:17,fontWeight:700,color:card.color,marginTop:4}}>€ {fmt(card.val)}</div>
-              </div>
-            ))}
-          </div>
+// ─── FORM VOCE – stato locale, nessun re-render del padre mentre si digita ──
+function FormVoce({initialForm, onSave, onCancel, lbl}){
+  const[f,setF]=useState(initialForm)
+  const ch=k=>e=>setF(p=>({...p,[k]:e.target.value}))
+  return(
+    <div className="form-box mb-8">
+      <div className="field-row">
+        <div style={{minWidth:90}}>
+          <div className="label mb-4">Orario</div>
+          <input type="text" defaultValue={f.orario||''} onChange={ch('orario')} placeholder="07:10" style={{width:90}}/>
+        </div>
+        <div style={{flex:1,minWidth:180}}>
+          <div className="label mb-4">Attività *</div>
+          <input type="text" defaultValue={f.attivita||''} onChange={ch('attivita')} placeholder="Descrivi l'attività" autoFocus/>
         </div>
       </div>
-
-      {/* TABS */}
-      <div style={{display:"flex",gap:2,padding:"14px 24px 0",borderBottom:`1px solid ${C.border}`}}>
-        {[["uscite","Buste di spesa"],["entrate","Entrate del mese"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setTab(k)} style={{
-            padding:"8px 20px",fontSize:13,fontWeight:tab===k?600:400,
-            color:tab===k?C.text:C.textSoft,
-            background:tab===k?C.elevated:"transparent",
-            border:`1px solid ${tab===k?C.border:"transparent"}`,
-            borderBottom:tab===k?`1px solid ${C.elevated}`:`1px solid ${C.border}`,
-            borderRadius:"8px 8px 0 0",cursor:"pointer",marginBottom:-1,
-          }}>{l}</button>
-        ))}
+      <div style={{marginBottom:12}}>
+        <div className="label mb-4">Note</div>
+        <input type="text" defaultValue={f.note||''} onChange={ch('note')} placeholder="Dettagli aggiuntivi…"/>
       </div>
-
-      {/* PANEL */}
-      <div style={{background:C.elevated,margin:"0 24px 24px",border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 8px 8px 8px",paddingBottom:20}}>
-
-        {tab==="uscite" ? (
-          <div>
-
-
-            {structure.map(cat=>{
-              const open = !collapsed[cat.id];
-              let cF=0,cV=0;
-              cat.subcats.forEach(s=>{cF+=Number(fixed[s.id])||0;cV+=Number(variable[s.id])||0;});
-              return (
-                <div key={cat.id} style={{borderBottom:`1px solid ${C.borderSoft}`}}>
-                  {/* riga categoria */}
-                  <div
-                    onClick={()=>toggleC(cat.id)}
-                    style={{display:"flex",alignItems:"center",gap:10,padding:"11px 16px",cursor:"pointer",background:C.surface,userSelect:"none"}}
-                  >
-                    <span style={{color:C.textSoft,fontSize:10,flexShrink:0,display:"inline-block",transition:"transform .15s",transform:open?"rotate(90deg)":"rotate(0deg)"}}>▶</span>
-                    <div onClick={e=>e.stopPropagation()} style={{flex:1,minWidth:0}}>
-                      <InlineEdit
-                        value={cat.name}
-                        onChange={v=>renameCat(cat.id,v)}
-                        style={{fontSize:14,fontWeight:700,color:"#FFFFFF",WebkitTextFillColor:"#FFFFFF"}}
-                      />
-                    </div>
-                    <span style={{fontFamily:"monospace",fontSize:12,color:C.green,minWidth:75,textAlign:"right",flexShrink:0}}>€ {fmt(cF)}</span>
-                    <span style={{fontFamily:"monospace",fontSize:12,color:C.pink, minWidth:75,textAlign:"right",flexShrink:0}}>€ {fmt(cV)}</span>
-                    <button
-                      onClick={e=>{e.stopPropagation();if(window.confirm(`Eliminare "${cat.name}"?`))deleteCat(cat.id);}}
-                      style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1,flexShrink:0}}
-                    >×</button>
-                  </div>
-
-                  {/* sottocategorie */}
-                  {open && cat.subcats.map(sub=>(
-                    <div key={sub.id} style={{
-                      padding:"9px 16px 11px 20px",
-                      background:sub.future?C.goldDim:"transparent",
-                      borderLeft:sub.future?`3px solid ${C.gold}`:"3px solid transparent",
-                      borderBottom:`1px solid ${C.borderSoft}`,
-                    }}>
-                      {/* riga 1: nome */}
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                        <span style={{color:C.gold,fontSize:12,flexShrink:0,minWidth:16,textAlign:"center"}}>{sub.future?"★":""}</span>
-                        <InlineEdit
-                          value={sub.name}
-                          onChange={v=>renameSub(cat.id,sub.id,v)}
-                          style={{fontSize:14,fontWeight:500,color:"#E8EAF0",flex:1}}
-                        />
-                        <button onClick={()=>toggleFuture(cat.id,sub.id)} style={{
-                          fontSize:9,padding:"2px 8px",borderRadius:10,cursor:"pointer",flexShrink:0,
-                          background:sub.future?C.gold:C.elevated,
-                          color:sub.future?"#1a1200":C.textDim,
-                          border:`1px solid ${sub.future?C.gold:C.border}`,
-                          textTransform:"uppercase",letterSpacing:"0.05em",fontFamily:"system-ui",
-                        }}>futuro</button>
-                        <button onClick={()=>deleteSub(cat.id,sub.id)}
-                          style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1,flexShrink:0}}>×</button>
-                      </div>
-                      {/* riga 2: caselle importo */}
-                      <div style={{display:"flex",gap:8,paddingLeft:24}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:9,color:C.green,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:3}}>Fisso</div>
-                          <AmountInput value={fixed[sub.id]}    onChange={v=>upFixed(sub.id,v)} color={C.green} dimColor={C.greenDim}/>
-                        </div>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:9,color:C.pink,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:3}}>Questo mese</div>
-                          <AmountInput value={variable[sub.id]} onChange={v=>upVar(sub.id,v)}   color={C.pink}  dimColor={C.pinkDim}/>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {open && (
-                    <button onClick={()=>addSub(cat.id)} style={{
-                      margin:"4px 16px 10px 42px",background:"none",border:"none",
-                      color:C.textDim,cursor:"pointer",fontSize:12,padding:"3px 8px",borderRadius:5,fontFamily:"system-ui",
-                    }}>+ aggiungi voce</button>
-                  )}
-                </div>
-              );
-            })}
-
-            <button onClick={addCat} style={{
-              margin:"16px 16px 0",display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-              width:"calc(100% - 32px)",padding:"10px",background:"none",
-              border:`1.5px dashed ${C.border}`,color:C.textDim,cursor:"pointer",
-              fontSize:13,borderRadius:8,fontFamily:"system-ui",
-            }}>+ Nuova categoria</button>
-
-            <div style={{display:"flex",justifyContent:"flex-end",gap:24,padding:"18px 16px 4px",marginTop:8,borderTop:`1px solid ${C.border}`}}>
-              {[{l:"Totale fisso",v:totFixed,c:C.green},{l:"Totale mese",v:totVar,c:C.pink}].map(t=>(
-                <div key={t.l} style={{textAlign:"right"}}>
-                  <div style={{fontSize:10,color:C.textDim,textTransform:"uppercase",letterSpacing:"0.08em"}}>{t.l}</div>
-                  <div style={{fontFamily:"monospace",fontSize:17,fontWeight:700,color:t.c,marginTop:3}}>€ {fmt(t.v)}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-        ) : (
-          /* TAB ENTRATE */
-          <div>
-            {incList.map(inc=>(
-              <div key={inc.id} style={{display:"grid",gridTemplateColumns:"1fr 130px 30px",alignItems:"center",gap:10,padding:"9px 16px",borderBottom:`1px solid ${C.borderSoft}`}}>
-                <InlineEdit value={inc.name} onChange={v=>renameInc(inc.id,v)} style={{fontSize:13.5,color:"#E8EAF0",WebkitTextFillColor:"#E8EAF0"}}/>
-                <AmountInput value={incData[inc.id]} onChange={v=>upInc(inc.id,v)} color={C.green} dimColor={C.greenDim}/>
-                <button onClick={()=>deleteInc(inc.id)} style={{background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:16,padding:0}}>×</button>
-              </div>
-            ))}
-
-            <button onClick={addInc} style={{margin:"8px 16px 0",background:"none",border:"none",color:C.textDim,cursor:"pointer",fontSize:12.5,padding:"4px 8px",fontFamily:"system-ui"}}>
-              + aggiungi fonte di entrata
-            </button>
-
-            {/* totale parziale prima del riporto */}
-            <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:16,padding:"10px 16px",marginTop:8,borderTop:`1px solid ${C.border}`}}>
-              <span style={{fontSize:11,color:C.textDim,textTransform:"uppercase",letterSpacing:"0.08em"}}>Subtotale entrate</span>
-              <span style={{fontFamily:"monospace",fontSize:15,fontWeight:600,color:C.green}}>€ {fmt(Object.values(incData).reduce((a,b)=>a+(Number(b)||0),0))}</span>
-            </div>
-
-            <div style={{display:"grid",gridTemplateColumns:"1fr 130px 30px",alignItems:"center",gap:10,padding:"12px 16px",background:C.surface}}>
-              <span style={{fontSize:13,color:C.textSoft,fontWeight:500}}>Avanzato dal mese precedente</span>
-              <AmountInput value={carry} onChange={upCarry} color={C.green} dimColor={C.greenDim}/>
-              <span/>
-            </div>
-
-            <div style={{display:"flex",justifyContent:"flex-end",padding:"18px 16px 4px",marginTop:8,borderTop:`1px solid ${C.border}`}}>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:10,color:C.textDim,textTransform:"uppercase",letterSpacing:"0.08em"}}>Totale entrate</div>
-                <div style={{fontFamily:"monospace",fontSize:17,fontWeight:700,color:C.green,marginTop:3}}>€ {fmt(totIncome)}</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={{position:"fixed",bottom:14,right:14,background:C.elevated,border:`1px solid ${C.border}`,color:C.textSoft,fontSize:11,padding:"4px 12px",borderRadius:20,opacity:saving?1:0,transition:"opacity 0.3s",pointerEvents:"none"}}>
-        salvataggio…
-      </div>
+      <div className="flex gap-4"><button className="cancel-btn" onClick={onCancel}>Annulla</button><button className="save-btn" onClick={()=>onSave(f)}>{lbl}</button></div>
     </div>
-  );
+  )
+}
+
+function FormSessione({initialForm, onSave, onCancel, lbl}){
+  const[f,setF]=useState(initialForm)
+  const ch=k=>e=>setF(p=>({...p,[k]:e.target.value}))
+  return(
+    <div className="form-box mb-8">
+      <div className="field-row">
+        <div style={{flex:1,minWidth:120}}><div className="label mb-4">Giorno</div><select defaultValue={f.giorno||'Lunedì'} onChange={ch('giorno')}>{GIORNI_SETTIMANA.map(g=><option key={g}>{g}</option>)}</select></div>
+        <div style={{flex:1,minWidth:120}}><div className="label mb-4">Tipo</div><select defaultValue={f.tipo||'Altro'} onChange={ch('tipo')}>{TIPI_ALLENAMENTO.map(t=><option key={t}>{t}</option>)}</select></div>
+        <div style={{flex:1,minWidth:100}}><div className="label mb-4">Intensità</div><select defaultValue={f.intensita||'media'} onChange={ch('intensita')}><option value="bassa">🟢 Bassa</option><option value="media">🟡 Media</option><option value="alta">🔴 Alta</option></select></div>
+      </div>
+      <div className="field-row">
+        <div style={{flex:2,minWidth:160}}><div className="label mb-4">Disciplina *</div><input type="text" defaultValue={f.disciplina||''} onChange={ch('disciplina')} autoFocus/></div>
+        <div style={{flex:1,minWidth:80}}><div className="label mb-4">Orario</div><input type="text" defaultValue={f.orario||''} onChange={ch('orario')} placeholder="17:00"/></div>
+        <div style={{flex:1,minWidth:80}}><div className="label mb-4">Durata</div><input type="text" defaultValue={f.durata||''} onChange={ch('durata')} placeholder="60 min"/></div>
+      </div>
+      <div style={{marginBottom:12}}><div className="label mb-4">Note</div><input type="text" defaultValue={f.note||''} onChange={ch('note')}/></div>
+      <div className="flex gap-4"><button className="cancel-btn" onClick={onCancel}>Annulla</button><button className="save-btn" onClick={()=>onSave(f)}>{lbl}</button></div>
+    </div>
+  )
+}
+
+const COLORI_INT=['#7c6af7','#4ecdc4','#ffa94d','#51cf66','#ff6b6b','#60a5fa','#f9a8d4']
+function FormIntegratore({initialForm, onSave, onCancel, lbl}){
+  const[f,setF]=useState(initialForm)
+  const ch=k=>e=>setF(p=>({...p,[k]:e.target.value}))
+  return(
+    <div className="form-box mb-12">
+      <div className="field-row">
+        <div style={{flex:2,minWidth:180}}><div className="label mb-4">Nome *</div><input type="text" defaultValue={f.nome||''} onChange={ch('nome')} autoFocus/></div>
+        <div style={{flex:1,minWidth:130}}><div className="label mb-4">Periodo</div><input type="text" defaultValue={f.periodo||''} onChange={ch('periodo')} placeholder="Tutto l'anno"/></div>
+      </div>
+      <div className="field-row">
+        <div style={{flex:1,minWidth:130}}><div className="label mb-4">Timing</div><input type="text" defaultValue={f.timing||''} onChange={ch('timing')} placeholder="Dopo colazione"/></div>
+        <div style={{flex:1,minWidth:130}}><div className="label mb-4">Dosaggio</div><input type="text" defaultValue={f.dosaggio||''} onChange={ch('dosaggio')} placeholder="1 capsula"/></div>
+      </div>
+      <div style={{marginBottom:8}}><div className="label mb-4">Beneficio</div><input type="text" defaultValue={f.beneficio||''} onChange={ch('beneficio')}/></div>
+      <div style={{marginBottom:12}}><div className="label mb-4">Note</div><input type="text" defaultValue={f.note||''} onChange={ch('note')}/></div>
+      <div style={{marginBottom:12}}><div className="label mb-8">Colore</div><div className="flex gap-8">{COLORI_INT.map(c=><div key={c} onClick={()=>setF(p=>({...p,colore:c}))} style={{width:28,height:28,borderRadius:'50%',background:c,cursor:'pointer',border:f.colore===c?'3px solid white':'3px solid transparent',boxShadow:f.colore===c?`0 0 0 2px ${c}`:'none'}}/>)}</div></div>
+      <div className="flex gap-4"><button className="cancel-btn" onClick={onCancel}>Annulla</button><button className="save-btn" onClick={()=>onSave(f)}>{lbl}</button></div>
+    </div>
+  )
+}
+
+// ─── MEAL PLAN ────────────────────────────────────────────────────────────────
+function MealPlan({profilo,profiloColore}){
+  const[piano,setPiano]=useState('base')
+  const[giorno,setGiorno]=useState('Lunedì')
+  const[dati,setDati]=useState(null)
+  const[editing,setEditing]=useState({})
+  const[editValues,setEditValues]=useState({})
+  const[saving,setSaving]=useState(false)
+  const[pickingProt,setPickingProt]=useState(null)
+  const fbKey=`${profilo}_${piano}`
+
+  useEffect(()=>{setDati(null);(async()=>{try{const s=await getDoc(doc(db,'biolife_alimentazione',fbKey));if(s.exists())setDati(s.data());else{const d=defaultAlimentazione[profilo]?.[`piano_${piano}`]||{};setDati(d);await setDoc(doc(db,'biolife_alimentazione',fbKey),d)}}catch{setDati(defaultAlimentazione[profilo]?.[`piano_${piano}`]||{})}})()},[profilo,piano])
+
+  const persist=async n=>{setSaving(true);setDati(n);try{await setDoc(doc(db,'biolife_alimentazione',fbKey),n)}catch(e){console.error(e)};setSaving(false)}
+  const startEdit=p=>{setEditing(e=>({...e,[p]:true}));setEditValues(v=>({...v,[p]:dati?.[giorno]?.[p]||''}))}
+  const saveEdit=async p=>{await persist({...dati,[giorno]:{...(dati?.[giorno]||{}),[p]:editValues[p]}});setEditing(e=>({...e,[p]:false}))}
+  const resetDefault=async()=>{if(!confirm('Ripristinare al default?'))return;await persist(defaultAlimentazione[profilo]?.[`piano_${piano}`]||{})}
+  const getProtOvr=(g,p)=>dati?._proteine?.[g]?.[p]||null
+  const setProtOvr=async(pasto,label)=>{
+    const ovr=dati?._proteine||{};const gO=ovr[giorno]||{}
+    const nG=label==='—'?(({[pasto]:_,...r})=>r)(gO):{...gO,[pasto]:label}
+    await persist({...dati,_proteine:{...ovr,[giorno]:nG}});setPickingProt(null)
+  }
+  const getProtMeal=(g,p,txt)=>{const o=getProtOvr(g,p);return o?getProtByLabel(o):getProteina(txt)}
+  const gs=['Lun','Mar','Mer','Gio','Ven','Sab','Dom']
+  const gd=dati?.[giorno]||{}
+
+  return(
+    <div>
+      <div className="plan-toggle">
+        <button className={`plan-toggle-btn ${piano==='base'?'active':''}`} onClick={()=>setPiano('base')}>📋 Piano Base</button>
+        <button className={`plan-toggle-btn ${piano==='alternativo'?'active':''}`} onClick={()=>setPiano('alternativo')}>🔄 Piano Alternativo</button>
+      </div>
+      <div className="day-tabs">{GIORNI.map((g,i)=><button key={g} className={`day-tab ${giorno===g?'active':''}`} style={giorno===g?{background:profiloColore,borderColor:profiloColore}:{}} onClick={()=>setGiorno(g)}>{gs[i]}</button>)}</div>
+      <div className="flex items-center justify-between mb-12">
+        <div><div className="section-title" style={{marginBottom:4}}>{giorno}</div><div className="text-muted text-sm">{piano==='base'?'Piano fisso':'Suggerimenti personalizzati'}</div></div>
+        <div className="flex gap-4">{saving&&<span className="text-xs text-muted">Salv…</span>}<button className="reset-btn" onClick={resetDefault} title="Ripristina default">🔄</button></div>
+      </div>
+      {!dati&&<div className="text-muted text-sm">Caricamento…</div>}
+      {dati&&PASTI.map(pasto=>{
+        const testo=gd[pasto]||'';const prot=getProtMeal(giorno,pasto,testo)
+        const isEd=editing[pasto];const isPick=pickingProt===pasto;const hasOvr=!!getProtOvr(giorno,pasto)
+        return(
+          <div key={pasto} className="meal-card">
+            <div className="meal-header">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-8">
+                  <div onClick={()=>setPickingProt(isPick?null:pasto)} style={{width:14,height:14,borderRadius:'50%',background:prot?prot.colore:'var(--border2)',cursor:'pointer',flexShrink:0,border:hasOvr?'2px solid white':'2px solid transparent',boxShadow:hasOvr&&prot?`0 0 0 1px ${prot.colore}`:'none'}}/>
+                  <span className="meal-name">{pasto}</span>
+                  {prot&&prot.label!=='—'&&<span style={{fontSize:10,color:prot.colore,fontWeight:600}}>{prot.label}{hasOvr?' ✎':''}</span>}
+                </div>
+                {isEd?<div className="flex gap-4"><button className="cancel-btn" onClick={()=>setEditing(e=>({...e,[pasto]:false}))}>Annulla</button><button className="save-btn" onClick={()=>saveEdit(pasto)}>Salva</button></div>
+                :<button className="edit-btn" onClick={()=>startEdit(pasto)}>✏️</button>}
+              </div>
+              {isPick&&<div className="flex gap-8" style={{paddingTop:8,flexWrap:'wrap'}}>
+                {TIPI_PROTEINA.map(tp=><div key={tp.label} onClick={()=>setProtOvr(pasto,tp.label)} style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',padding:'3px 8px',borderRadius:20,border:`1px solid ${getProtOvr(giorno,pasto)===tp.label?tp.colore:'var(--border)'}`,background:getProtOvr(giorno,pasto)===tp.label?tp.colore+'22':'transparent'}}>
+                  <div style={{width:8,height:8,borderRadius:'50%',background:tp.colore}}/><span style={{fontSize:11,color:getProtOvr(giorno,pasto)===tp.label?tp.colore:'var(--muted)'}}>{tp.label}</span>
+                </div>)}
+              </div>}
+            </div>
+            <div className="meal-body">
+              {isEd?<textarea value={editValues[pasto]||''} onChange={e=>setEditValues(v=>({...v,[pasto]:e.target.value}))} autoFocus/>
+              :<div style={{fontSize:14,lineHeight:1.6}}>{testo?testo.split('•').map((t,i)=><span key={i}>{i>0&&<span style={{color:profiloColore,margin:'0 6px'}}>·</span>}{t.trim()}</span>):<span className="text-muted">—</span>}</div>}
+            </div>
+          </div>
+        )
+      })}
+      {dati&&(
+        <div style={{marginTop:28}}>
+          <div className="section-title" style={{marginBottom:12}}>📊 Riepilogo Proteico Settimanale</div>
+          <div className="flex gap-8 mb-12" style={{flexWrap:'wrap'}}>{LEGENDA.map(l=><div key={l.label} className="flex items-center gap-4"><div style={{width:10,height:10,borderRadius:'50%',background:l.colore}}/><span style={{fontSize:11,color:'var(--muted)'}}>{l.label}</span></div>)}</div>
+          <div style={{background:'var(--card)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:12,overflowX:'auto'}}>
+            <div className="rg">
+              <div/>{['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].map(g=><div key={g} className="rg-h">{g}</div>)}
+              {PASTI.map((pasto,pi)=>[
+                <div key={'l'+pi} className="rg-l">{['Col.','Mer.M','Pran.','Mer.P','Cena'][pi]}</div>,
+                ...GIORNI.map(g=>{const o=dati?._proteine?.[g]?.[pasto];const p=o?getProtByLabel(o):getProteina(dati?.[g]?.[pasto]||'');return<div key={g+pi} className="rg-c"><div style={{width:13,height:13,borderRadius:'50%',background:p?p.colore:'var(--border2)'}}/></div>})
+              ])}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── PROFILO GENETICO ─────────────────────────────────────────────────────────
+function ProfiloGenetico({profilo}){
+  const dati=profiliGenetici[profilo];const[open,setOpen]=useState(null)
+  if(!dati)return null
+  const badge=l=>l==='alto'?'badge-red':l==='attenzione'?'badge-yellow':'badge-green'
+  const lbl=l=>l==='alto'?'⚠️ Alto':l==='attenzione'?'⚡ Attenzione':'✅ Basso'
+  const cR=p=>p>=25?'#f87171':p>=18?'#fbbf24':'#4ade80'
+  return(
+    <div>
+      {dati.patologie?.length>0&&<><div className="section-title">🏥 Patologie Accertate</div><div className="mb-16">{dati.patologie.map((p,i)=>(
+        <div key={i} style={{background:'var(--card)',border:`1px solid ${p.livello==='alto'?'rgba(248,113,113,.3)':'rgba(251,191,36,.25)'}`,borderRadius:'var(--radius)',marginBottom:10,overflow:'hidden'}}>
+          <div className="flex items-center justify-between" style={{padding:'12px 14px',cursor:'pointer'}} onClick={()=>setOpen(open===i?null:i)}>
+            <div className="flex items-center gap-8"><span style={{fontSize:20}}>{p.emoji}</span><span style={{fontWeight:600,fontSize:14}}>{p.nome}</span></div>
+            <div className="flex items-center gap-8"><span className={`badge ${p.livello==='alto'?'badge-red':'badge-yellow'}`}>{p.livello==='alto'?'🔴':'🟡'}</span><span style={{color:'var(--muted)',fontSize:12}}>{open===i?'▲':'▼'}</span></div>
+          </div>
+          {open===i&&<div style={{padding:'0 14px 14px',borderTop:'1px solid var(--border)'}}><div className="text-sm text-muted" style={{margin:'10px 0'}}>{p.note}</div><div className="label mb-8">Consigli</div>{p.consigli.map((c,j)=><div key={j} className="note-item" style={{marginBottom:6}}>{c}</div>)}</div>}
+        </div>
+      ))}</div></>}
+      {dati.rischiPRS?.length>0&&<><div className="section-title">🧬 Rischi Genetici (PRS)</div><div className="card mb-16">{dati.rischiPRS.map((r,i)=>(
+        <div key={i} className="flex items-center justify-between" style={{padding:'10px 0',borderBottom:i<dati.rischiPRS.length-1?'1px solid var(--border)':'none'}}>
+          <div><div className="text-sm" style={{marginBottom:2}}>{r.area}</div><span className={`badge ${badge(r.livello)}`}>{lbl(r.livello)}</span></div>
+          <div className="flex items-center gap-8"><div className="risk-bar"><div className="risk-fill" style={{width:`${Math.min(r.percentuale,100)}%`,background:cR(r.percentuale)}}/></div><span className="text-sm" style={{color:cR(r.percentuale),fontFamily:'Space Grotesk',fontWeight:600,minWidth:42,textAlign:'right'}}>{r.percentuale.toFixed(0)}%</span></div>
+        </div>
+      ))}</div></>}
+      {dati.intolleranze?.length>0&&<><div className="section-title">⚡ Intolleranze</div><div className="mb-16">{dati.intolleranze.map((t,i)=><div key={i} className="card2 mb-8"><div className="flex items-center gap-8 mb-4"><span className="text-sm" style={{fontWeight:600}}>{t.nome}</span><span className={`badge ${t.rischio==='alto'?'badge-red':'badge-yellow'}`}>{t.rischio==='alto'?'⚠️':'⚡'}</span></div>{t.nota&&<div className="text-xs text-muted">{t.nota}</div>}</div>)}</div></>}
+      {dati.carenze?.length>0&&<><div className="section-title">💊 Carenze</div><div className="mb-16">{dati.carenze.map((c,i)=><div key={i} className="card2 mb-8"><div className="flex items-center gap-8 mb-4"><span className="text-sm" style={{fontWeight:600}}>{c.nutriente}</span><span className={`badge ${c.rischio==='alto'?'badge-red':'badge-yellow'}`}>{c.rischio==='alto'?'🔴':'🟡'}</span></div><div className="text-xs text-muted mb-4">{c.alimenti}</div>{c.nota&&<div className="text-xs" style={{color:'#fbbf24'}}>{c.nota}</div>}</div>)}</div></>}
+      <div className="section-title">📋 Note Cliniche</div>
+      <div className="card">{dati.noteClinici.map((n,i)=><div key={i} className="note-item" style={{marginBottom:6}}>{n}</div>)}</div>
+    </div>
+  )
+}
+
+// ─── ALLENAMENTO ──────────────────────────────────────────────────────────────
+function Allenamento({profilo,profiloColore}){
+  const[dati,setDati]=useState(null)
+  const[editingId,setEditingId]=useState(null)
+  const[aggiungendo,setAggiungendo]=useState(false)
+  const[filtro,setFiltro]=useState('Tutti')
+  const[saving,setSaving]=useState(false)
+  const[editNote,setEditNote]=useState(false)
+  const[noteVal,setNoteVal]=useState('')
+  const sv=()=>({id:'all_'+Date.now(),giorno:'Lunedì',tipo:'Altro',disciplina:'',orario:'',durata:'',intensita:'media',note:''})
+
+  useEffect(()=>{(async()=>{try{const s=await getDoc(doc(db,'biolife_allenamenti',profilo));if(s.exists())setDati(s.data());else{const d=defaultAllenamenti[profilo]||{note:'',sessioni:[]};setDati(d);await setDoc(doc(db,'biolife_allenamenti',profilo),d)}}catch{setDati(defaultAllenamenti[profilo]||{note:'',sessioni:[]})}})()},[profilo])
+
+  const persist=async n=>{setSaving(true);setDati(n);try{await setDoc(doc(db,'biolife_allenamenti',profilo),n)}catch(e){console.error(e)};setSaving(false)}
+  const saveEdit=async f=>{await persist({...dati,sessioni:dati.sessioni.map(s=>s.id===editingId?{...s,...f}:s)});setEditingId(null)}
+  const elimina=async id=>{if(!confirm('Eliminare?'))return;await persist({...dati,sessioni:dati.sessioni.filter(s=>s.id!==id)})}
+  const aggiungi=async f=>{if(!f.disciplina?.trim())return;await persist({...dati,sessioni:[...dati.sessioni,{...f,id:'all_'+Date.now()}]});setAggiungendo(false)}
+  const saveNote=async()=>{await persist({...dati,note:noteVal});setEditNote(false)}
+  const move=async(id,dir)=>{
+    const arr=[...dati.sessioni];const i=arr.findIndex(s=>s.id===id);const j=i+dir
+    if(j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]];await persist({...dati,sessioni:arr})
+  }
+
+  if(!dati)return<div className="text-muted">Caricamento…</div>
+  const cI=i=>i==='alta'?'#f87171':i==='media'?'#fbbf24':'#4ade80'
+  const em=t=>({'Arti Marziali':'🥋','Corsa':'🏃','Cardio':'🚴','Corpo libero':'💪','Nuoto':'🏊','Atletica':'⚡','Outdoor':'🚵','Allungamento':'🧘','Recupero':'😴','Gioco libero':'🎮'}[t]||'🏋️')
+  const gs={Lunedì:'Lun',Martedì:'Mar',Mercoledì:'Mer',Giovedì:'Gio',Venerdì:'Ven',Sabato:'Sab',Domenica:'Dom'}
+  const lista=filtro==='Tutti'?dati.sessioni:dati.sessioni.filter(s=>s.giorno===filtro)
+
+  return(
+    <div>
+      <div className="flex items-center justify-between mb-4"><div className="section-title" style={{marginBottom:0}}>Piano Allenamento</div>{saving&&<span className="text-xs text-muted">Salv…</span>}</div>
+      <div className="card mb-16">
+        <div className="flex items-center justify-between mb-4"><span className="label">Note generali</span>{editNote?<div className="flex gap-4"><button className="cancel-btn" onClick={()=>setEditNote(false)}>Annulla</button><button className="save-btn" onClick={saveNote}>Salva</button></div>:<button className="edit-btn" onClick={()=>{setEditNote(true);setNoteVal(dati.note||'')}}>✏️</button>}</div>
+        {editNote?<textarea value={noteVal} onChange={e=>setNoteVal(e.target.value)} style={{minHeight:60}}/>:<div className="text-sm">{dati.note||'—'}</div>}
+      </div>
+      <div className="day-tabs mb-16">{['Tutti',...GIORNI_SETTIMANA].map(g=><button key={g} className={`day-tab ${filtro===g?'active':''}`} style={filtro===g?{background:profiloColore,borderColor:profiloColore}:{}} onClick={()=>setFiltro(g)}>{g==='Tutti'?'Tutti':gs[g]}</button>)}</div>
+      {lista.map((s,i)=>{
+        const realI=dati.sessioni.findIndex(x=>x.id===s.id)
+        return(
+          <div key={s.id}>
+            {editingId===s.id
+              ?<FormSessione initialForm={s} onSave={saveEdit} onCancel={()=>setEditingId(null)} lbl="Salva"/>
+              :<div className="list-item" style={{borderLeft:`3px solid ${cI(s.intensita)}`}}>
+                <div className="flex gap-4" style={{flexShrink:0,flexDirection:'column'}}>
+                  <button className="move-btn" onClick={()=>move(s.id,-1)} disabled={realI===0} style={{opacity:realI===0?.3:1}}>↑</button>
+                  <button className="move-btn" onClick={()=>move(s.id,1)} disabled={realI===dati.sessioni.length-1} style={{opacity:realI===dati.sessioni.length-1?.3:1}}>↓</button>
+                </div>
+                <div style={{flex:1}}>
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-8"><span style={{fontSize:18}}>{em(s.tipo)}</span><div><div style={{fontWeight:600,fontSize:14}}>{s.disciplina}</div><div className="text-xs text-muted">{s.giorno} · {s.tipo}</div></div></div>
+                    <div className="flex gap-4"><button className="edit-btn" onClick={()=>setEditingId(s.id)}>✏️</button><button className="del-btn" onClick={()=>elimina(s.id)}>🗑</button></div>
+                  </div>
+                  <div className="flex gap-8" style={{flexWrap:'wrap',marginBottom:s.note?6:0}}>
+                    {s.orario&&s.orario!=='—'&&<div className="chip">🕐 {s.orario}</div>}
+                    {s.durata&&s.durata!=='—'&&<div className="chip">⏱ {s.durata}</div>}
+                    <div className="chip" style={{color:cI(s.intensita),borderColor:cI(s.intensita)+'44'}}>● {s.intensita}</div>
+                  </div>
+                  {s.note&&<div className="text-xs text-muted">{s.note}</div>}
+                </div>
+              </div>}
+          </div>
+        )
+      })}
+      {aggiungendo?<FormSessione initialForm={sv()} onSave={aggiungi} onCancel={()=>setAggiungendo(false)} lbl="➕ Aggiungi"/>
+      :<button className="add-btn" onClick={()=>setAggiungendo(true)}>➕ Aggiungi sessione</button>}
+    </div>
+  )
+}
+
+// ─── STILE DI VITA ────────────────────────────────────────────────────────────
+function StileVita({profilo}){
+  const[dati,setDati]=useState(null)
+  const[saving,setSaving]=useState(false)
+  const[momento,setMomento]=useState('mattina')
+  const[editingId,setEditingId]=useState(null)
+  const[aggiungendo,setAggiungendo]=useState(false)
+  const[editNoteIdx,setEditNoteIdx]=useState(null)
+  const[editNoteVal,setEditNoteVal]=useState('')
+  const[aggiungendoNota,setAggiungendoNota]=useState(false)
+  const[nuovaNota,setNuovaNota]=useState('')
+
+  useEffect(()=>{
+    setDati(null)
+    ;(async()=>{try{const s=await getDoc(doc(db,'biolife_stile_vita',profilo));if(s.exists())setDati(s.data());else{const d=defaultStileVita[profilo]||{routine:{mattina:[],pomeriggio:[],sera:[]},note_generali:[]};setDati(d);await setDoc(doc(db,'biolife_stile_vita',profilo),d)}}catch{setDati(defaultStileVita[profilo]||{routine:{mattina:[],pomeriggio:[],sera:[]},note_generali:[]})}})()
+  },[profilo])
+
+  const persist=async n=>{setSaving(true);setDati(n);try{await setDoc(doc(db,'biolife_stile_vita',profilo),n)}catch(e){console.error(e)};setSaving(false)}
+  const sez=dati?.routine?.[momento]||[]
+
+  const saveEdit=async f=>{await persist({...dati,routine:{...dati.routine,[momento]:sez.map(r=>r.id===editingId?{...r,...f}:r)}});setEditingId(null)}
+  const elimina=async id=>{if(!confirm('Eliminare?'))return;await persist({...dati,routine:{...dati.routine,[momento]:sez.filter(r=>r.id!==id)}})}
+  const aggiungi=async f=>{if(!f.attivita?.trim())return;await persist({...dati,routine:{...dati.routine,[momento]:[...sez,{...f,id:'sv_'+Date.now()}]}});setAggiungendo(false)}
+  const move=async(id,dir)=>{
+    const arr=[...sez];const i=arr.findIndex(r=>r.id===id);const j=i+dir
+    if(j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]];await persist({...dati,routine:{...dati.routine,[momento]:arr}})
+  }
+  const saveNota=async(idx,val)=>{const n=[...(dati.note_generali||[])];n[idx]=val;await persist({...dati,note_generali:n});setEditNoteIdx(null)}
+  const eliminaNota=async idx=>{if(!confirm('Eliminare?'))return;await persist({...dati,note_generali:(dati.note_generali||[]).filter((_,i)=>i!==idx)})}
+  const aggiungiNota=async()=>{if(!nuovaNota.trim())return;await persist({...dati,note_generali:[...(dati.note_generali||[]),nuovaNota]});setAggiungendoNota(false);setNuovaNota('')}
+  const resetDef=async()=>{if(!confirm('Ripristinare routine di default?'))return;await persist(defaultStileVita[profilo]||{routine:{mattina:[],pomeriggio:[],sera:[]},note_generali:[]})}
+
+  if(!dati)return<div className="text-muted">Caricamento…</div>
+  const momenti=[{id:'mattina',label:'🌅 Mattina'},{id:'pomeriggio',label:'☀️ Pomeriggio'},{id:'sera',label:'🌙 Sera'}]
+
+  return(
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="section-title" style={{marginBottom:0}}>Routine Giornaliera</div>
+        <div className="flex gap-4">{saving&&<span className="text-xs text-muted">Salv…</span>}<button className="reset-btn" onClick={resetDef}>🔄</button></div>
+      </div>
+      <div className="text-muted text-sm mb-16">Usa ↑↓ per riordinare le voci</div>
+      <div className="day-tabs mb-16">{momenti.map(m=><button key={m.id} className={`day-tab ${momento===m.id?'active':''}`} style={momento===m.id?{background:'#7c6af7',borderColor:'#7c6af7'}:{}} onClick={()=>{setMomento(m.id);setEditingId(null);setAggiungendo(false)}}>{m.label}</button>)}</div>
+      {sez.length===0&&!aggiungendo&&<div className="empty-state"><div className="text-muted text-sm">Nessuna voce — ➕ per aggiungere</div></div>}
+      {sez.map((item,i)=>(
+        <div key={item.id}>
+          {editingId===item.id
+            ?<FormVoce initialForm={item} onSave={saveEdit} onCancel={()=>setEditingId(null)} lbl="Salva"/>
+            :<div className="list-item">
+              <div className="flex gap-4" style={{flexShrink:0,flexDirection:'column'}}>
+                <button className="move-btn" onClick={()=>move(item.id,-1)} disabled={i===0} style={{opacity:i===0?.3:1}}>↑</button>
+                <button className="move-btn" onClick={()=>move(item.id,1)} disabled={i===sez.length-1} style={{opacity:i===sez.length-1?.3:1}}>↓</button>
+              </div>
+              {item.orario&&<div className="routine-time">{item.orario}</div>}
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:500}}>{item.attivita}</div>
+                {item.note&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{item.note}</div>}
+              </div>
+              <div className="flex gap-4" style={{flexShrink:0,marginLeft:4}}>
+                <button className="edit-btn" onClick={()=>setEditingId(item.id)}>✏️</button>
+                <button className="del-btn" onClick={()=>elimina(item.id)}>🗑</button>
+              </div>
+            </div>}
+        </div>
+      ))}
+      {aggiungendo?<FormVoce initialForm={{id:'',orario:'',attivita:'',note:''}} onSave={aggiungi} onCancel={()=>setAggiungendo(false)} lbl="➕ Aggiungi"/>
+      :<button className="add-btn" onClick={()=>setAggiungendo(true)}>➕ Aggiungi voce</button>}
+      <hr className="sep"/>
+      <div className="section-title mt-8">📌 Note Generali</div>
+      {(dati.note_generali||[]).map((nota,idx)=>(
+        <div key={idx} className="note-item" style={{marginBottom:6}}>
+          {editNoteIdx===idx
+            ?<div style={{flex:1}}><input type="text" defaultValue={nota} onChange={e=>setEditNoteVal(e.target.value)} onFocus={e=>setEditNoteVal(e.target.value)} autoFocus style={{marginBottom:6}}/><div className="flex gap-4" style={{marginTop:8}}><button className="cancel-btn" onClick={()=>setEditNoteIdx(null)}>Annulla</button><button className="save-btn" onClick={()=>saveNota(idx,editNoteVal)}>Salva</button></div></div>
+            :<><span style={{flex:1}}>{nota}</span><div className="flex gap-4" style={{flexShrink:0,marginLeft:8}}><button className="edit-btn" onClick={()=>{setEditNoteIdx(idx);setEditNoteVal(nota)}}>✏️</button><button className="del-btn" onClick={()=>eliminaNota(idx)}>🗑</button></div></>}
+        </div>
+      ))}
+      {aggiungendoNota?<div className="form-box" style={{marginTop:8}}><div className="label mb-4">Nuova nota</div><input type="text" value={nuovaNota} onChange={e=>setNuovaNota(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')aggiungiNota()}} autoFocus style={{marginBottom:8}}/><div className="flex gap-4" style={{marginTop:8}}><button className="cancel-btn" onClick={()=>{setAggiungendoNota(false);setNuovaNota('')}}>Annulla</button><button className="save-btn" onClick={aggiungiNota}>➕ Aggiungi</button></div></div>
+      :<button className="add-btn" style={{marginTop:8}} onClick={()=>setAggiungendoNota(true)}>➕ Aggiungi nota</button>}
+    </div>
+  )
+}
+
+// ─── INTEGRATORI ──────────────────────────────────────────────────────────────
+function Integratori({profilo}){
+  const[lista,setLista]=useState(null)
+  const[editingId,setEditingId]=useState(null)
+  const[aggiungendo,setAggiungendo]=useState(false)
+  const[saving,setSaving]=useState(false)
+  const iv=()=>({id:'int_'+Date.now(),periodo:"Tutto l'anno",timing:'',nome:'',dosaggio:'',beneficio:'',note:'',colore:'#7c6af7'})
+  const defaultPerProfilo=()=>profilo==='damiano'?integratoriDamiano:profilo==='ilaria'?integratoriIlaria:[]
+
+  useEffect(()=>{(async()=>{try{const s=await getDoc(doc(db,'biolife_integratori',profilo));if(s.exists())setLista(s.data().items||[]);else{const d=profilo==='damiano'?integratoriDamiano:profilo==='ilaria'?integratoriIlaria:[];setLista(d);await setDoc(doc(db,'biolife_integratori',profilo),{items:d})}}catch{setLista(profilo==='damiano'?integratoriDamiano:profilo==='ilaria'?integratoriIlaria:[])}})()},[profilo])
+
+  const persist=async n=>{setSaving(true);setLista(n);try{await setDoc(doc(db,'biolife_integratori',profilo),{items:n})}catch(e){console.error(e)};setSaving(false)}
+  const resetDefault=async()=>{if(!confirm('Ripristinare gli integratori di default per questo profilo?'))return;const d=defaultPerProfilo();await persist(d)}
+  const saveEdit=async f=>{await persist(lista.map(i=>i.id===editingId?{...i,...f}:i));setEditingId(null)}
+  const elimina=async id=>{if(!confirm('Eliminare?'))return;await persist(lista.filter(i=>i.id!==id))}
+  const aggiungi=async f=>{if(!f.nome?.trim())return;await persist([...lista,{...f,id:'int_'+Date.now()}]);setAggiungendo(false)}
+  const move=async(id,dir)=>{const arr=[...lista];const i=arr.findIndex(x=>x.id===id);const j=i+dir;if(j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]];await persist(arr)}
+
+  if(!lista)return<div className="text-muted">Caricamento…</div>
+  const periodi=[...new Set(lista.map(i=>i.periodo).filter(Boolean))]
+
+  return(
+    <div>
+      <div className="flex items-center justify-between mb-4"><div className="section-title" style={{marginBottom:0}}>💊 Integratori</div><div className="flex gap-4">{saving&&<span className="text-xs text-muted">Salv…</span>}<button className="reset-btn" onClick={resetDefault} title="Ripristina integratori default">🔄</button></div></div>
+      <div className="text-muted text-sm mb-16">Modificabile · Aggiornare con il medico</div>
+      {lista.length===0&&!aggiungendo&&<div className="empty-state"><div style={{fontSize:40,marginBottom:12}}>💊</div><div className="text-muted text-sm">Nessun integratore</div></div>}
+      {periodi.map(periodo=>(
+        <div key={periodo} className="mb-16">
+          <div style={{fontFamily:'Space Grotesk',fontWeight:600,fontSize:12,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.8px',marginBottom:10,paddingLeft:4}}>{periodo}</div>
+          {lista.filter(i=>i.periodo===periodo).map(item=>(
+            <div key={item.id}>
+              {editingId===item.id?<FormIntegratore initialForm={item} onSave={saveEdit} onCancel={()=>setEditingId(null)} lbl="Salva"/>
+              :<div className="integr-card" style={{borderLeftColor:item.colore,display:'flex',gap:8,alignItems:'flex-start'}}>
+                <div className="flex gap-4" style={{flexShrink:0,flexDirection:'column'}}>
+                  <button className="move-btn" onClick={()=>move(item.id,-1)} disabled={lista.indexOf(item)===0} style={{opacity:lista.indexOf(item)===0?.3:1}}>↑</button>
+                  <button className="move-btn" onClick={()=>move(item.id,1)} disabled={lista.indexOf(item)===lista.length-1} style={{opacity:lista.indexOf(item)===lista.length-1?.3:1}}>↓</button>
+                </div>
+                <div style={{flex:1}}>
+                  <div className="flex items-center justify-between mb-4"><div style={{fontWeight:600,fontSize:14,flex:1,paddingRight:8}}>{item.nome}</div><div className="flex gap-4"><div className="chip">{item.timing}</div><button className="edit-btn" onClick={()=>setEditingId(item.id)}>✏️</button><button className="del-btn" onClick={()=>elimina(item.id)}>🗑</button></div></div>
+                  <div className="text-xs text-muted mb-4"><span style={{color:item.colore}}>●</span> {item.dosaggio}</div>
+                  <div className="text-sm" style={{marginBottom:item.note?6:0}}>{item.beneficio}</div>
+                  {item.note&&<div className="text-xs" style={{color:'#fbbf24',marginTop:4}}>{item.note}</div>}
+                </div>
+              </div>}
+            </div>
+          ))}
+        </div>
+      ))}
+      {aggiungendo?<FormIntegratore initialForm={iv()} onSave={aggiungi} onCancel={()=>setAggiungendo(false)} lbl="➕ Aggiungi"/>
+      :<button className="add-btn" onClick={()=>setAggiungendo(true)}>➕ Aggiungi integratore</button>}
+    </div>
+  )
+}
+
+// ─── ACQUA TRACKER ───────────────────────────────────────────────────────────
+const GOAL_ACQUA={damiano:8,ilaria:8,daniele:8,tommaso:8}
+function AcquaTracker({profilo,profiloColore}){
+  const oggi=new Date()
+  const[offset,setOffset]=useState(0)
+  const[bicchieri,setBicchieri]=useState(0)
+  const[loaded,setLoaded]=useState(false)
+  const[saving,setSaving]=useState(false)
+  const dStr=(o=0)=>{const d=new Date(oggi);d.setDate(d.getDate()+o);return d.toISOString().split('T')[0]}
+  const dLbl=(o)=>{if(o===0)return'Oggi';if(o===-1)return'Ieri';const d=new Date(oggi);d.setDate(d.getDate()+o);return d.toLocaleDateString('it-IT',{day:'numeric',month:'short'})}
+  const fbKey=`${profilo}_${dStr(offset)}`
+
+  useEffect(()=>{setLoaded(false);setBicchieri(0);(async()=>{try{const s=await getDoc(doc(db,'biolife_acqua',fbKey));setBicchieri(s.exists()?s.data().bicchieri||0:0)}catch{setBicchieri(0)};setLoaded(true)})()},[profilo,fbKey])
+
+  const goal=GOAL_ACQUA[profilo]||8
+  const toggle=async idx=>{const n=idx<bicchieri?idx:idx+1;setBicchieri(n);setSaving(true);try{await setDoc(doc(db,'biolife_acqua',fbKey),{bicchieri:n,data:dStr(offset),profilo})}catch(e){console.error(e)};setSaving(false)}
+  const pct=Math.min(bicchieri/goal,1)
+  const msg=()=>{if(!bicchieri)return'Inizia la tua idratazione! 💧';if(bicchieri<goal*.5)return'Buon inizio, continua! 🌊';if(bicchieri<goal)return`Quasi! Mancano ${goal-bicchieri} bicchieri 🎯`;return'Obiettivo raggiunto! 🏆'}
+
+  return(
+    <div>
+      <div className="flex items-center justify-between mb-4"><div className="section-title" style={{marginBottom:0}}>💧 Tracker Acqua</div>{saving&&<span className="text-xs text-muted">Salv…</span>}</div>
+      <div className="flex items-center justify-between mb-16" style={{background:'var(--card)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'10px 16px'}}>
+        <button onClick={()=>setOffset(o=>o-1)} style={{background:'transparent',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:22,padding:'0 8px'}}>‹</button>
+        <div style={{textAlign:'center'}}><div style={{fontFamily:'Space Grotesk',fontWeight:600,fontSize:15}}>{dLbl(offset)}</div><div style={{fontSize:11,color:'var(--muted)'}}>{dStr(offset)}</div></div>
+        <button onClick={()=>setOffset(o=>Math.min(o+1,0))} style={{background:'transparent',border:'none',color:offset>=0?'var(--border2)':'var(--muted)',cursor:offset>=0?'default':'pointer',fontSize:22,padding:'0 8px'}} disabled={offset>=0}>›</button>
+      </div>
+      {loaded&&<>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:20}}>
+          {Array.from({length:goal}).map((_,i)=>{
+            const p=i<bicchieri
+            return(
+              <div key={i} onClick={()=>toggle(i)} style={{cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+                <div style={{position:'relative',width:46,height:58}}>
+                  <div style={{position:'absolute',inset:0,border:`2px solid ${p?profiloColore:'var(--border2)'}`,borderRadius:'4px 4px 8px 8px',overflow:'hidden',background:'var(--surface)',transition:'border-color .3s'}}>
+                    <div style={{position:'absolute',bottom:0,left:0,right:0,height:p?'100%':'0%',background:`linear-gradient(180deg,${profiloColore}88,${profiloColore}cc)`,transition:'height .4s cubic-bezier(.4,0,.2,1)',borderRadius:'0 0 6px 6px'}}/>
+                    {p&&<div style={{position:'absolute',top:0,left:0,right:0,height:4,background:`${profiloColore}55`,borderRadius:'50% 50% 0 0'}}/>}
+                  </div>
+                  <div style={{position:'absolute',right:-8,top:'30%',width:8,height:'35%',border:`2px solid ${p?profiloColore:'var(--border2)'}`,borderLeft:'none',borderRadius:'0 4px 4px 0',transition:'border-color .3s'}}/>
+                </div>
+                <span style={{fontSize:10,color:p?profiloColore:'var(--muted)',fontWeight:p?600:400}}>{(i+1)*250}ml</span>
+              </div>
+            )
+          })}
+        </div>
+        <div className="card mb-12">
+          <div className="flex items-center justify-between mb-8">
+            <span style={{fontFamily:'Space Grotesk',fontSize:28,fontWeight:700,color:profiloColore}}>{(bicchieri*250/1000).toFixed(2)}L</span>
+            <span style={{fontSize:13,color:'var(--muted)'}}>di {goal*250/1000}L · {bicchieri}/{goal}</span>
+          </div>
+          <div style={{background:'var(--border)',borderRadius:6,height:8,overflow:'hidden',marginBottom:10}}><div style={{height:'100%',width:`${pct*100}%`,background:`linear-gradient(90deg,${profiloColore}88,${profiloColore})`,borderRadius:6,transition:'width .4s ease'}}/></div>
+          <div style={{fontSize:13,color:bicchieri>=goal?profiloColore:'var(--muted)'}}>{msg()}</div>
+        </div>
+        {bicchieri>0&&<button onClick={()=>toggle(-1)} style={{background:'transparent',border:'1px solid var(--border)',borderRadius:8,color:'var(--muted)',cursor:'pointer',fontSize:12,padding:'6px 14px',width:'100%'}}>🔄 Azzera giornata</button>}
+      </>}
+      {!loaded&&<div className="text-muted text-sm">Caricamento…</div>}
+    </div>
+  )
+}
+
+// ─── APP ─────────────────────────────────────────────────────────────────────
+export default function App(){
+  const[profiloId,setProfiloId]=useState('damiano')
+  const[tabIdx,setTabIdx]=useState(0)
+  const profilo=PROFILI.find(p=>p.id===profiloId)
+  return(
+    <><style>{css}</style>
+    <div className="app">
+      <div className="header">
+        <div className="logo">BioLife <span className="logo-sub">Famiglia Iovenitti</span></div>
+        <div className="profiles-row">{PROFILI.map(p=><button key={p.id} className={`profile-btn ${profiloId===p.id?'active':''}`} style={profiloId===p.id?{background:p.colore+'22',borderColor:p.colore,color:p.colore}:{}} onClick={()=>setProfiloId(p.id)}><span style={{fontSize:16}}>{p.emoji}</span><span>{p.nome}</span><span className="text-xs" style={{opacity:.6}}>{p.eta}a</span></button>)}</div>
+        <div className="tabs-row">{TABS.map((t,i)=><button key={t} className={`tab-btn ${tabIdx===i?'active':''}`} style={tabIdx===i?{color:profilo?.colore,borderBottomColor:profilo?.colore}:{}} onClick={()=>setTabIdx(i)}>{t}</button>)}</div>
+      </div>
+      <div className="content">
+        {tabIdx===0&&<MealPlan profilo={profiloId} profiloColore={profilo?.colore}/>}
+        {tabIdx===1&&<ProfiloGenetico profilo={profiloId}/>}
+        {tabIdx===2&&<Allenamento profilo={profiloId} profiloColore={profilo?.colore}/>}
+        {tabIdx===3&&<StileVita profilo={profiloId}/>}
+        {tabIdx===4&&<Integratori profilo={profiloId}/>}
+        {tabIdx===5&&<AcquaTracker profilo={profiloId} profiloColore={profilo?.colore}/>}
+      </div>
+    </div></>
+  )
 }
