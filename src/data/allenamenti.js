@@ -19,17 +19,18 @@ export const defaultAllenamenti = {
   },
 
   ilaria: {
-    note: 'Obiettivi: snellire e tonificare gambe, glutei, addome e braccia • Ridurre cellulite glutei • Eliminare ciccetta addome basso, fianchi, interno cosce • Strumenti: Kettlebell 8kg, elastici, cavigliere',
+    note: 'Allenamento leggero ma costante. Priorità: ossigenazione, tonificazione e salute ossea (fondamentale per paratormone).',
     sessioni: [
-      { id: 'b1', giorno: 'Lunedì',    tipo: 'Corsa',        disciplina: 'Fartlek var. A – sprint brevi', orario: 'Da definire', durata: '35-40 min', intensita: 'alta',  note: '5 min riscaldamento → fartlek: 30 sec sprint + 60 sec recupero × 20-25 min → 5 min defaticamento + stretching gambe e glutei' },
-      { id: 'b2', giorno: 'Martedì',   tipo: 'Corpo libero',  disciplina: 'Circuit A – KB + Elastici + Cavigliere', orario: 'Da definire', durata: '45 min', intensita: 'alta',  note: '3-4 giri: KB swing 15 • Goblet squat KB 15 • Hip thrust con elastico 20 • Lateral walk elastico 15+15 • Sumo squat KB 15 • Deadlift KB 12 • Leg lift cavigliera 20 • Donkey kick cavigliera 20 • Plank 45 sec • Crunch inverso 15 • Shoulder press KB 12 • Tricep kickback elastico 15' },
-      { id: 'b3', giorno: 'Mercoledì', tipo: 'Cardio',        disciplina: 'Cardio rigenerativo – camminata / ellittica / corsa lunga', orario: 'Da definire', durata: '45-60 min', intensita: 'media', note: 'Scegliere in base alla forma → Camminata veloce 60 min (preferita per cellulite e circolazione) oppure Ellittica 40 min oppure Corsa lenta 30-35 min a ritmo conversazione' },
-      { id: 'b4', giorno: 'Giovedì',   tipo: 'Corpo libero',  disciplina: 'Circuit B – KB + Elastici + Cavigliere', orario: 'Da definire', durata: '45 min', intensita: 'alta',  note: '3-4 giri: Stacco rumeno KB 12 • Bulgarian squat KB 10+10 • Clamshell con elastico 20+20 • Squat sumo pulsante 20 • Hip thrust monopodalico 15+15 • Abductor lift cavigliera 20+20 • Plank laterale 30 sec • Mountain climber 30 sec • Curl bicipite KB 12 • Russian twist 20' },
-      { id: 'b5', giorno: 'Venerdì',   tipo: 'Corsa',         disciplina: 'Fartlek var. B – progressivo', orario: 'Da definire', durata: '35-40 min', intensita: 'alta',  note: '5 min riscaldamento → fartlek progressivo: ogni giro aumenta leggermente il ritmo × 25-30 min → 5 min defaticamento + stretching profondo gambe, glutei, fianchi e interno cosce' },
-      { id: 'b6', giorno: 'Sabato',    tipo: 'Allungamento',  disciplina: 'Stretching attivo + foam roller', orario: 'Mattina', durata: '20-30 min', intensita: 'bassa', note: 'Stretching profondo gambe, fianchi, glutei • Foam roller su cosce e glutei per cellulite • Yoga o mobilità se voglia' },
-      { id: 'b7', giorno: 'Domenica',  tipo: 'Recupero',      disciplina: 'Riposo attivo', orario: '—', durata: '—', intensita: 'bassa', note: 'Passeggiata con la famiglia • Nessun allenamento strutturato • Recupero completo' },
+      { id: 'b1', giorno: 'Lunedì',    tipo: 'Arti Marziali',  disciplina: 'Wing Chun',              orario: '13:00',  durata: '60 min', intensita: 'alta',   note: 'Stessa classe di Damiano' },
+      { id: 'b2', giorno: 'Martedì',   tipo: 'Cardio',         disciplina: 'Corsa o Ellittica',      orario: 'Da definire', durata: 'Da definire', intensita: 'media', note: 'Decidere al momento in base alla forma fisica' },
+      { id: 'b3', giorno: 'Mercoledì', tipo: 'Cardio',         disciplina: 'Corsa o Ellittica',      orario: 'Da definire', durata: 'Da definire', intensita: 'media', note: 'Decidere al momento in base alla forma fisica' },
+      { id: 'b4', giorno: 'Giovedì',   tipo: 'Cardio',         disciplina: 'Corsa o Ellittica',      orario: 'Da definire', durata: 'Da definire', intensita: 'media', note: 'Decidere al momento in base alla forma fisica' },
+      { id: 'b5', giorno: 'Venerdì',   tipo: 'Arti Marziali',  disciplina: 'Wing Chun',              orario: '13:00',  durata: '60 min', intensita: 'alta',   note: 'Stessa classe di Damiano' },
+      { id: 'b6', giorno: 'Sabato',    tipo: 'Recupero',       disciplina: 'Camminate + stretching', orario: 'Mattina', durata: '30-45 min', intensita: 'bassa', note: 'Attività all\'aperto con la famiglia' },
+      { id: 'b7', giorno: 'Domenica',  tipo: 'Recupero',       disciplina: 'Riposo attivo',          orario: '—', durata: '—', intensita: 'bassa', note: 'Yoga o stretching se voglia' },
     ]
   },
+
   daniele: {
     note: 'Piano sportivo strutturato. Atletica 3 volte/settimana + piscina sabato. Ottimo per sviluppo motorio e fisico.',
     sessioni: [
