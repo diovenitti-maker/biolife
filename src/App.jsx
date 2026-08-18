@@ -308,6 +308,7 @@ function Allenamento({profilo,profiloColore}){
   const elimina=async id=>{if(!confirm('Eliminare?'))return;await persist({...dati,sessioni:dati.sessioni.filter(s=>s.id!==id)})}
   const aggiungi=async f=>{if(!f.disciplina?.trim())return;await persist({...dati,sessioni:[...dati.sessioni,{...f,id:'all_'+Date.now()}]});setAggiungendo(false)}
   const saveNote=async()=>{await persist({...dati,note:noteVal});setEditNote(false)}
+  const resetDefault=async()=>{if(!confirm('Ripristinare il piano allenamento di default per questo profilo?'))return;const d=defaultAllenamenti[profilo]||{note:'',sessioni:[]};await persist(d)}
   const move=async(id,dir)=>{
     const arr=[...dati.sessioni];const i=arr.findIndex(s=>s.id===id);const j=i+dir
     if(j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]];await persist({...dati,sessioni:arr})
@@ -321,7 +322,7 @@ function Allenamento({profilo,profiloColore}){
 
   return(
     <div>
-      <div className="flex items-center justify-between mb-4"><div className="section-title" style={{marginBottom:0}}>Piano Allenamento</div>{saving&&<span className="text-xs text-muted">Salv…</span>}</div>
+      <div className="flex items-center justify-between mb-4"><div className="section-title" style={{marginBottom:0}}>Piano Allenamento</div><div className="flex gap-4">{saving&&<span className="text-xs text-muted">Salv…</span>}<button className="reset-btn" onClick={resetDefault} title="Ripristina piano default">🔄</button></div></div>
       <div className="card mb-16">
         <div className="flex items-center justify-between mb-4"><span className="label">Note generali</span>{editNote?<div className="flex gap-4"><button className="cancel-btn" onClick={()=>setEditNote(false)}>Annulla</button><button className="save-btn" onClick={saveNote}>Salva</button></div>:<button className="edit-btn" onClick={()=>{setEditNote(true);setNoteVal(dati.note||'')}}>✏️</button>}</div>
         {editNote?<textarea value={noteVal} onChange={e=>setNoteVal(e.target.value)} style={{minHeight:60}}/>:<div className="text-sm">{dati.note||'—'}</div>}
